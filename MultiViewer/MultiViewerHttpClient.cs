@@ -169,11 +169,25 @@ namespace F1SimHubLive.MultiViewer
             {
                 try
                 {
+                    // Fire all 4 timing endpoints in parallel. Each is awaited
+                    // individually via SafeGetString so a 404 on ONE endpoint
+                    // (e.g. LapCount during practice — MV returns 404 "No data
+                    // found, do you have live timing running?" because practice
+                    // sessions have no lap count) doesn't poison the rest of
+                    // the loop. Before this guard, a single Task.WhenAll on
+                    // four tasks would throw on the first failed task and skip
+                    // DriverList fetch, TrackStatus decoding, and the whole
+                    // SessionSnapshot emission — leaving the wheel showing
+                    // "F1 LIVE" indefinitely during any practice/quali
+                    // session that doesn't expose LapCount.
                     var lapTask = _http.GetStringAsync(lapUrl);
                     var statusTask = _http.GetStringAsync(statusUrl);
                     var clockTask = _http.GetStringAsync(clockUrl);
                     var sessionTask = _http.GetStringAsync(sessionUrl);
-                    await Task.WhenAll(lapTask, statusTask, clockTask, sessionTask).ConfigureAwait(false);
+                    string lapJson = await SafeGetString(lapTask, "LapCount").ConfigureAwait(false);
+                    string statusJson = await SafeGetString(statusTask, "TrackStatus").ConfigureAwait(false);
+                    string clockJson = await SafeGetString(clockTask, "ExtrapolatedClock").ConfigureAwait(false);
+                    string sessionJson = await SafeGetString(sessionTask, "SessionData").ConfigureAwait(false);
 
                     // DriverList: fetched once (field size doesn't change mid-race). Retry each
                     // iteration until we get a non-zero count, and until we resolve identity
@@ -203,25 +217,33 @@ namespace F1SimHubLive.MultiViewer
                         catch { /* try again next tick */ }
                     }
 
-                    var (currentLap, totalLaps) = LapCountDecoder.Parse(lapTask.Result);
-                    var (code, msg) = TrackStatusDecoder.Parse(statusTask.Result);
+                    // Decoders are already tolerant of empty/malformed JSON
+                    // (TrackStatusDecoder returns (0,""), LapCountDecoder
+                    // returns (0,0), etc.) so an empty string from a 404'd
+                    // endpoint just leaves that piece of the snapshot blank
+                    // instead of killing the whole emit.
+                    var (currentLap, totalLaps) = LapCountDecoder.Parse(lapJson);
+                    var (code, msg) = TrackStatusDecoder.Parse(statusJson);
 
                     // Cache race start UTC from SessionData.StatusSeries (entry with SessionStatus="Started").
                     // In live racing this is "lights out"; in replay it's the recorded moment, which
                     // pairs correctly with CarData Utc to compute the live replay elapsed time.
-                    if (_raceStartUtc == DateTime.MinValue)
+                    if (_raceStartUtc == DateTime.MinValue && sessionJson.Length > 0)
                     {
-                        var rs = SessionDataDecoder.ParseRaceStartUtc(sessionTask.Result);
+                        var rs = SessionDataDecoder.ParseRaceStartUtc(sessionJson);
                         if (rs != DateTime.MinValue) _raceStartUtc = rs;
                     }
 
                     // Cache session duration limit from the first ExtrapolatedClock baseline we see
                     // (Remaining at race start = the regulatory time limit; F1 race = ~2h).
-                    var clock = ExtrapolatedClockDecoder.Parse(clockTask.Result);
-                    if (clock.IsValid && clock.Remaining > TimeSpan.Zero &&
-                        clock.Remaining < TimeSpan.FromHours(4))
+                    if (clockJson.Length > 0)
                     {
-                        _sessionDuration = clock.Remaining;
+                        var clock = ExtrapolatedClockDecoder.Parse(clockJson);
+                        if (clock.IsValid && clock.Remaining > TimeSpan.Zero &&
+                            clock.Remaining < TimeSpan.FromHours(4))
+                        {
+                            _sessionDuration = clock.Remaining;
+                        }
                     }
 
                     // Live remaining = sessionDuration - (replayNow - raceStart). Use the freshest
@@ -256,6 +278,27 @@ namespace F1SimHubLive.MultiViewer
 
                 try { await Task.Delay(_timingPollIntervalMs, ct).ConfigureAwait(false); }
                 catch (TaskCanceledException) { break; }
+            }
+        }
+
+        // Awaits an HTTP GET, returning empty string on any failure. Lets
+        // SessionDataLoopAsync fan out multiple endpoints in parallel without
+        // a single 404 (e.g. LapCount during practice) cascading into a loop-
+        // wide skip. Logs throttled by name so a chronic 404 doesn't spam the
+        // log every iteration.
+        private async Task<string> SafeGetString(Task<string> task, string endpointName)
+        {
+            try
+            {
+                return await task.ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                if (_consecutiveFailures == 0)
+                {
+                    _log($"MultiViewer {endpointName} poll failed: {ex.Message}");
+                }
+                return "";
             }
         }
 

@@ -8,6 +8,7 @@
     <Nullable>enable</Nullable>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <SimHubPath Condition="'$(SimHubPath)' == ''">$(MSBuildProgramFiles32)\SimHub</SimHubPath>
+    <SimHubLibFallback>$(MSBuildProjectDirectory)\lib\simhub</SimHubLibFallback>
     <Version>1.1.0</Version>
     <AssemblyVersion>1.1.0.0</AssemblyVersion>
     <FileVersion>1.1.0.0</FileVersion>
@@ -22,17 +23,30 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
+  <!--
+    SimHub DLLs are referenced from a live SimHub install when present
+    (developer machines where the user has SimHub installed), and fall back
+    to the vendored copies under lib/simhub/ when not (CI runners, fresh
+    clones, anywhere SimHub isn't installed). The vendored copies exist
+    purely to make CI builds work — see lib/simhub/README.md for the
+    licensing rationale. <Private>false</Private> keeps them OUT of the
+    plugin build output: SimHub already has its own copies at runtime, we
+    don't want to overwrite or shadow them.
+  -->
   <ItemGroup>
     <Reference Include="SimHub.Plugins">
-      <HintPath>$(SimHubPath)\SimHub.Plugins.dll</HintPath>
+      <HintPath Condition="Exists('$(SimHubPath)\SimHub.Plugins.dll')">$(SimHubPath)\SimHub.Plugins.dll</HintPath>
+      <HintPath Condition="!Exists('$(SimHubPath)\SimHub.Plugins.dll')">$(SimHubLibFallback)\SimHub.Plugins.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="GameReaderCommon">
-      <HintPath>$(SimHubPath)\GameReaderCommon.dll</HintPath>
+      <HintPath Condition="Exists('$(SimHubPath)\GameReaderCommon.dll')">$(SimHubPath)\GameReaderCommon.dll</HintPath>
+      <HintPath Condition="!Exists('$(SimHubPath)\GameReaderCommon.dll')">$(SimHubLibFallback)\GameReaderCommon.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="log4net">
-      <HintPath>$(SimHubPath)\log4net.dll</HintPath>
+      <HintPath Condition="Exists('$(SimHubPath)\log4net.dll')">$(SimHubPath)\log4net.dll</HintPath>
+      <HintPath Condition="!Exists('$(SimHubPath)\log4net.dll')">$(SimHubLibFallback)\log4net.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="WindowsBase" />

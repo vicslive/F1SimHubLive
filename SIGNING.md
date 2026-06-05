@@ -215,9 +215,9 @@ Set them via `gh secret set NAME -R vicslive/F1SimHubLive --body "value"` or thr
 
 The workflow uses `azure/login@v2` with `id-token: write` — GitHub mints a short-lived OIDC token, exchanges it for an Azure access token via your Entra App Registration's federated credential, and uses that to call Trusted Signing. **No long-lived secret is stored anywhere.** This is the recommended modern pattern.
 
-Set up the federated credential in Entra once: App Registration → Certificates & secrets → Federated credentials → "Add credential" → choose "GitHub Actions deploying Azure resources" → org `vicslive`, repo `F1SimHubLive`, ref `refs/tags/v*` (or branch `main`).
+Set up the federated credential in Entra once: App Registration → Certificates & secrets → Federated credentials → "Add credential" → choose "GitHub Actions deploying Azure resources" → org `vicslive`, repo `F1SimHubLive`, entity type **Environment**, name `release`. This pairs with `environment: release` on the release job in `release.yml` and avoids having to add a new federated credential per tag.
 
-Grant the App Registration the **Trusted Signing Certificate Profile Signer** role on the Trusted Signing account.
+Grant the App Registration the **Artifact Signing Certificate Profile Signer** role on the Trusted Signing account. (Previously named "Trusted Signing Certificate Profile Signer" — Microsoft renamed it in 2025.)
 
 
 ---

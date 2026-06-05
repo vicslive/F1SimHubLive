@@ -18,11 +18,14 @@ permissions:
 jobs:
   build-and-release:
     runs-on: windows-latest
+    environment: release
 
     env:
       DOTNET_VERSION: "8.0.x"
       INSTALLER_PROJECT: installer/F1SimHubLive.Installer.csproj
       INSTALLER_OUTPUT: installer/publish/F1SimHubLive-Installer.exe
+      PICKER_PROJECT: picker/F1SimHubLive.Picker.csproj
+      PICKER_PUBLISH_DIR: picker/bin/Release/net8.0-windows/win-x64/publish
 
     steps:
       - name: Checkout
@@ -55,19 +58,9 @@ jobs:
           "version=$version"                 | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           "assemblyVersion=$assemblyVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Restore + publish single-file installer
-        shell: pwsh
-        run: |
-          dotnet publish ${{ env.INSTALLER_PROJECT }} -c Release -o installer/publish `
-            -p:Version=${{ steps.ver.outputs.version }} `
-            -p:AssemblyVersion=${{ steps.ver.outputs.assemblyVersion }} `
-            -p:FileVersion=${{ steps.ver.outputs.assemblyVersion }} `
-            -p:InformationalVersion=${{ steps.ver.outputs.version }}
-          Get-Item ${{ env.INSTALLER_OUTPUT }} | Select Name, Length
-
       # ------------------------------------------------------------------
-      # Optional: Trusted Signing step. Skipped unless ALL of the following
-      # repo secrets are configured:
+      # Optional: Trusted Signing config check. Skipped unless ALL of the
+      # following repo secrets are configured:
       #   AZURE_TENANT_ID
       #   AZURE_CLIENT_ID            (App registration with federated creds)
       #   AZURE_TRUSTED_SIGNING_ENDPOINT  (e.g. https://eus.codesigning.azure.net)
@@ -90,9 +83,9 @@ jobs:
           }
           "configured=$($configured.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
           if ($configured) {
-            Write-Host "Trusted Signing secrets present - will sign."
+            Write-Host "Trusted Signing secrets present - will sign picker AND installer."
           } else {
-            Write-Host "Trusted Signing secrets not configured - skipping sign step."
+            Write-Host "Trusted Signing secrets not configured - skipping both sign steps."
           }
 
       - name: Azure login (federated)
@@ -102,6 +95,46 @@ jobs:
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           allow-no-subscriptions: true
+
+      # ------------------------------------------------------------------
+      # Picker must be published AND signed before the installer publish,
+      # because the installer embeds the picker exe as an MSBuild resource.
+      # Signing the installer wrapper does NOT retroactively sign the
+      # embedded picker — so order matters here. See SIGNING.md §"Where
+      # the picker has to be signed".
+      # ------------------------------------------------------------------
+      - name: Publish picker
+        shell: pwsh
+        run: |
+          dotnet publish ${{ env.PICKER_PROJECT }} -c Release `
+            -p:Version=${{ steps.ver.outputs.version }} `
+            -p:AssemblyVersion=${{ steps.ver.outputs.assemblyVersion }} `
+            -p:FileVersion=${{ steps.ver.outputs.assemblyVersion }} `
+            -p:InformationalVersion=${{ steps.ver.outputs.version }}
+          Get-Item "${{ env.PICKER_PUBLISH_DIR }}/F1SimHubLive-Picker.exe" | Select Name, Length
+
+      - name: Sign picker with Trusted Signing
+        if: steps.signcheck.outputs.configured == 'true'
+        uses: azure/trusted-signing-action@v0.5.1
+        with:
+          endpoint: ${{ secrets.AZURE_TRUSTED_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_TRUSTED_SIGNING_PROFILE }}
+          files-folder: ${{ env.PICKER_PUBLISH_DIR }}
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Restore + publish single-file installer
+        shell: pwsh
+        run: |
+          dotnet publish ${{ env.INSTALLER_PROJECT }} -c Release -o installer/publish `
+            -p:Version=${{ steps.ver.outputs.version }} `
+            -p:AssemblyVersion=${{ steps.ver.outputs.assemblyVersion }} `
+            -p:FileVersion=${{ steps.ver.outputs.assemblyVersion }} `
+            -p:InformationalVersion=${{ steps.ver.outputs.version }}
+          Get-Item ${{ env.INSTALLER_OUTPUT }} | Select Name, Length
 
       - name: Sign installer with Trusted Signing
         if: steps.signcheck.outputs.configured == 'true'

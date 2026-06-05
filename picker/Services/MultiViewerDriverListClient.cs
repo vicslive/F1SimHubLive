@@ -101,13 +101,19 @@ internal sealed class MultiViewerDriverListClient
 
         // Sort key:
         //   1) Constructors' position (1 = championship leader, top of list).
-        //   2) Driver points DESC within team (lead driver appears first).
-        //   3) Race number for a deterministic tiebreak when points tie.
-        // When ChampionshipPrediction was unavailable, TeamPosition is
-        // int.MaxValue for everyone and we fall back to race-number order via
-        // the third key.
+        //   2) Team name (groups teammates together even when standings are
+        //      unavailable — e.g. during a practice/quali session, where
+        //      ChampionshipPrediction returns no Teams data, every driver
+        //      gets TeamPosition = int.MaxValue and this key becomes the
+        //      dominant grouping. When standings DO exist, teammates share
+        //      the same TeamPosition AND the same TeamName, so this key is
+        //      a no-op and the points tiebreak below still picks the lead
+        //      driver first within team).
+        //   3) Driver points DESC within team (lead driver appears first).
+        //   4) Race number for a deterministic tiebreak when points tie.
         return list
             .OrderBy(d => d.TeamPosition)
+            .ThenBy(d => d.TeamName, StringComparer.OrdinalIgnoreCase)
             .ThenByDescending(d => d.DriverPoints)
             .ThenBy(d => d.RacingNumberSort)
             .ToList();

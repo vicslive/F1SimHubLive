@@ -18,12 +18,21 @@ namespace F1SimHubLive.F1Signalr
         private IHubProxy? _proxy;
         private bool _driverInfoEmitted;
 
+        // Session-level state cached from feed topics. The SignalR feed pushes
+        // each topic independently (TrackStatus changes a few times a session,
+        // DriverList is delivered once + deltas), so we hold the last known
+        // value and re-emit a complete SessionSnapshot whenever any field
+        // changes. OnFeed is single-threaded by the SignalR client, so no lock.
+        private int _trackStatusCode;
+        private string _trackStatusMessage = "";
+        private int _totalDrivers;
+
         public event Action<DriverSnapshot>? OnSnapshot;
-#pragma warning disable CS0067 // Timing/Session/Weather events reserved for future SignalR parsing
+#pragma warning disable CS0067 // Timing/Weather events reserved for future SignalR parsing
         public event Action<TimingSnapshot>? OnTimingSnapshot;
-        public event Action<SessionSnapshot>? OnSessionSnapshot;
         public event Action<WeatherSnapshot>? OnWeatherSnapshot;
 #pragma warning restore CS0067
+        public event Action<SessionSnapshot>? OnSessionSnapshot;
         public event Action<DriverInfoSnapshot>? OnDriverInfoSnapshot;
         public event Action<string>? OnStatus;
 
@@ -91,6 +100,15 @@ namespace F1SimHubLive.F1Signalr
                 {
                     EmitFromDriverList(dlInitial.ToString());
                 }
+                // Initial TrackStatus snapshot — same shape as the MultiViewer
+                // endpoint: { "Status":"1", "Message":"AllClear" }. Without this,
+                // a session already under VSC/SC/Red when the plugin connects
+                // would show "AllClear" until the next status change.
+                if (initial.TryGetValue(TopicNames.TrackStatus, out var tsInitial)
+                    && tsInitial.Type == JTokenType.Object)
+                {
+                    EmitFromTrackStatus(tsInitial.ToString());
+                }
             }
             catch (Exception ex)
             {
@@ -113,7 +131,11 @@ namespace F1SimHubLive.F1Signalr
                 {
                     EmitFromDriverList(data.ToString());
                 }
-                // Future hooks: TimingAppData (ERS), DriverList deltas, etc.
+                else if (topic == TopicNames.TrackStatus && data.Type == JTokenType.Object)
+                {
+                    EmitFromTrackStatus(data.ToString());
+                }
+                // Future hooks: TimingAppData (ERS), LapCount, ExtrapolatedClock, etc.
             }
             catch (Exception ex)
             {
@@ -131,6 +153,19 @@ namespace F1SimHubLive.F1Signalr
 
         private void EmitFromDriverList(string json)
         {
+            // TotalDrivers feeds the "P 14/22" display. The first DriverList
+            // payload (initial subscribe response) is a full snapshot; later
+            // feed events for DriverList are typically deltas containing only
+            // the changed drivers. CountDrivers on a delta would shrink the
+            // total to whatever's in the delta (e.g. 1), so we only ever raise
+            // the cached value — never let a delta lower it.
+            int n = DriverListDecoder.CountDrivers(json);
+            if (n > _totalDrivers)
+            {
+                _totalDrivers = n;
+                EmitSessionSnapshot();
+            }
+
             if (_driverInfoEmitted) return;
             var info = DriverListDecoder.ParseDriverInfo(json, _driverNumber);
             if (info == null) return;
@@ -138,6 +173,36 @@ namespace F1SimHubLive.F1Signalr
             _driverInfoEmitted = true;
             _log($"DriverList resolved #{_driverNumber}: {info.Tla} {info.BroadcastName} ({info.TeamName})");
             OnDriverInfoSnapshot?.Invoke(info);
+        }
+
+        private void EmitFromTrackStatus(string json)
+        {
+            var (code, msg) = TrackStatusDecoder.Parse(json);
+            // Decoder returns (0, "") on malformed input. Treat code 0 as a
+            // sentinel for "parse failed / unknown" and don't clobber a valid
+            // VSC/SC/Red state with it — the next valid feed will refresh us.
+            if (code <= 0) return;
+            if (code == _trackStatusCode && msg == _trackStatusMessage) return;
+            _trackStatusCode = code;
+            _trackStatusMessage = msg ?? "";
+            _log($"TrackStatus: {code} ({_trackStatusMessage})");
+            EmitSessionSnapshot();
+        }
+
+        private void EmitSessionSnapshot()
+        {
+            // The plugin's OnSessionSnapshot handler writes all SessionSnapshot
+            // fields to SimHub properties. Lap/SessionTimeRemaining aren't yet
+            // parsed from the SignalR feed (no LapCount/ExtrapolatedClock
+            // topic handling), so they ride at their default empties — same as
+            // they were before this method existed.
+            OnSessionSnapshot?.Invoke(new SessionSnapshot
+            {
+                Utc = DateTime.UtcNow,
+                TrackStatusCode = _trackStatusCode,
+                TrackStatusMessage = _trackStatusMessage,
+                TotalDrivers = _totalDrivers,
+            });
         }
 
         public void SetDriverNumber(string driverNumber)

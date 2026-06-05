@@ -25,3 +25,7 @@ installer/**/*.pdb
 # OS clutter
 Thumbs.db
 .DS_Store
+
+# Local-only signing runbook — contains Azure resource IDs and recovery commands.
+# Not secret per se (real secrets live in Azure HSM + GitHub Secrets vault), but keep on local disk only.
+.signing-runbook.md

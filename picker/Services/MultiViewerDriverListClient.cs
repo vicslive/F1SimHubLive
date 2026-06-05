@@ -36,6 +36,7 @@ internal sealed class MultiViewerDriverListClient
     private readonly HttpClient _http;
     private readonly string _driverListUrl;
     private readonly string _standingsUrl;
+    private readonly JolpicaStandingsClient _jolpica;
 
     public MultiViewerDriverListClient(string baseUrl)
     {
@@ -43,17 +44,51 @@ internal sealed class MultiViewerDriverListClient
         string b = baseUrl.TrimEnd('/');
         _driverListUrl = b + "/api/v1/live-timing/DriverList";
         _standingsUrl = b + "/api/v1/live-timing/ChampionshipPrediction";
+        _jolpica = new JolpicaStandingsClient();
     }
 
     public async Task<IReadOnlyList<DriverEntry>> FetchAsync(CancellationToken ct = default)
     {
-        // Fire both requests in parallel without Task.WhenAll, which gets
-        // grumpy about nullable variance between Task<string> and Task<string?>.
+        // Three-tier standings resolution:
+        //   1) Jolpica (Ergast successor) — public season standings. Always
+        //      reflects post-last-race totals; doesn't care whether the local
+        //      session is a practice / quali / race. The right answer for the
+        //      "Antonelli is leading the championship, put Mercedes at top
+        //      during Monaco FP2" requirement.
+        //   2) MultiViewer ChampionshipPrediction — local API. Only populated
+        //      during points-bearing sessions, but works without internet.
+        //   3) Alphabetical team grouping (final fallback in the sort below).
+        // Fire driver list + both standings sources in parallel so the
+        // additional fallback doesn't add latency to the common path.
         var driverTask = _http.GetStringAsync(_driverListUrl, ct);
-        var standingsTask = TryGetStandingsAsync(ct);
+        var jolpicaTask = TryFetchJolpicaAsync(ct);
+        var mvStandingsTask = TryGetStandingsAsync(ct);
+
         string driverJson = await driverTask.ConfigureAwait(false);
-        string? standingsJson = await standingsTask.ConfigureAwait(false);
-        return Parse(driverJson, standingsJson);
+        var (jTeamPos, jTeamPts, jDriverPts) = await jolpicaTask.ConfigureAwait(false);
+        string? mvStandingsJson = await mvStandingsTask.ConfigureAwait(false);
+
+        Dictionary<string, int> teamPos, teamPts, driverPts;
+        if (jTeamPos.Count > 0)
+        {
+            teamPos = jTeamPos; teamPts = jTeamPts; driverPts = jDriverPts;
+        }
+        else
+        {
+            (teamPos, teamPts, driverPts) = ParseStandings(mvStandingsJson);
+        }
+
+        return Parse(driverJson, teamPos, teamPts, driverPts);
+    }
+
+    private async Task<(Dictionary<string, int>, Dictionary<string, int>, Dictionary<string, int>)>
+        TryFetchJolpicaAsync(CancellationToken ct)
+    {
+        try { return await _jolpica.FetchAsync(ct).ConfigureAwait(false); }
+        catch
+        {
+            return (new Dictionary<string, int>(), new Dictionary<string, int>(), new Dictionary<string, int>());
+        }
     }
 
     private async Task<string?> TryGetStandingsAsync(CancellationToken ct)
@@ -64,8 +99,18 @@ internal sealed class MultiViewerDriverListClient
 
     internal static IReadOnlyList<DriverEntry> Parse(string driverListJson, string? standingsJson)
     {
+        // Back-compat overload (no Jolpica) — kept so MV-only consumers still
+        // get team-ordered output when ChampionshipPrediction is populated.
         var (teamPos, teamPts, driverPts) = ParseStandings(standingsJson);
+        return Parse(driverListJson, teamPos, teamPts, driverPts);
+    }
 
+    internal static IReadOnlyList<DriverEntry> Parse(
+        string driverListJson,
+        Dictionary<string, int> teamPos,
+        Dictionary<string, int> teamPts,
+        Dictionary<string, int> driverPts)
+    {
         var list = new List<DriverEntry>();
         using var doc = JsonDocument.Parse(driverListJson);
         if (doc.RootElement.ValueKind != JsonValueKind.Object) return list;
@@ -80,8 +125,11 @@ internal sealed class MultiViewerDriverListClient
             if (!int.TryParse(number, out var raceSort)) raceSort = int.MaxValue;
 
             string team = GetString(entry.Value, "TeamName");
-            int tPos = teamPos.TryGetValue(team, out var tp) ? tp : int.MaxValue;
-            int tPts = teamPts.TryGetValue(team, out var tpts) ? tpts : 0;
+            // Canonicalize the team name so a DriverList "Red Bull Racing"
+            // matches a Jolpica "Red Bull" in the standings dictionaries.
+            string teamKey = TeamNameAliaser.TeamKey(team);
+            int tPos = teamPos.TryGetValue(teamKey, out var tp) ? tp : int.MaxValue;
+            int tPts = teamPts.TryGetValue(teamKey, out var tpts) ? tpts : 0;
             int dPts = driverPts.TryGetValue(number, out var dpts) ? dpts : 0;
 
             list.Add(new DriverEntry
@@ -102,13 +150,11 @@ internal sealed class MultiViewerDriverListClient
         // Sort key:
         //   1) Constructors' position (1 = championship leader, top of list).
         //   2) Team name (groups teammates together even when standings are
-        //      unavailable — e.g. during a practice/quali session, where
-        //      ChampionshipPrediction returns no Teams data, every driver
-        //      gets TeamPosition = int.MaxValue and this key becomes the
+        //      unavailable — e.g. during a practice/quali session where every
+        //      driver gets TeamPosition = int.MaxValue, this key becomes the
         //      dominant grouping. When standings DO exist, teammates share
-        //      the same TeamPosition AND the same TeamName, so this key is
-        //      a no-op and the points tiebreak below still picks the lead
-        //      driver first within team).
+        //      the same TeamPosition AND TeamName, so this key is a no-op and
+        //      the points tiebreak below still picks the lead driver first).
         //   3) Driver points DESC within team (lead driver appears first).
         //   4) Race number for a deterministic tiebreak when points tie.
         return list
@@ -146,10 +192,11 @@ internal sealed class MultiViewerDriverListClient
                     // the engine partner ("McLaren Mercedes") and won't match.
                     string shortName = GetString(t.Value, "TeamName");
                     if (string.IsNullOrEmpty(shortName)) continue;
+                    string key = TeamNameAliaser.TeamKey(shortName);
                     if (TryGetInt(t.Value, "CurrentPosition", out var pos))
-                        teamPos[shortName] = pos;
+                        teamPos[key] = pos;
                     if (TryGetInt(t.Value, "CurrentPoints", out var pts))
-                        teamPts[shortName] = pts;
+                        teamPts[key] = pts;
                 }
             }
 

@@ -27,6 +27,17 @@ namespace F1SimHubLive.F1Signalr
         private string _trackStatusMessage = "";
         private int _totalDrivers;
 
+        // Cache of the initial DriverList snapshot received with the Subscribe
+        // response. We use this on driver-switch (picker click) to resolve the
+        // new driver's identity *immediately* instead of waiting for the next
+        // DriverList feed event — feed events on this topic are deltas (only
+        // changed drivers) and during practice can be minutes apart, leaving
+        // the wheel showing "F1 LIVE" instead of the new driver's name until
+        // a delta happens to include them. Driver identity (Tla, names, team,
+        // colour) is static for the whole weekend so the initial snapshot is
+        // sufficient — no need to merge deltas in.
+        private string? _driverListSnapshotJson;
+
         public event Action<DriverSnapshot>? OnSnapshot;
 #pragma warning disable CS0067 // Timing/Weather events reserved for future SignalR parsing
         public event Action<TimingSnapshot>? OnTimingSnapshot;
@@ -164,6 +175,14 @@ namespace F1SimHubLive.F1Signalr
             {
                 _totalDrivers = n;
                 EmitSessionSnapshot();
+                // Treat a snapshot that grows the known-driver count as the
+                // authoritative "richer" picture and cache it for picker-driven
+                // driver switches. The very first call (initial Subscribe
+                // response) always lands here because _totalDrivers starts at
+                // 0, so the full snapshot is what we cache. Subsequent deltas
+                // typically have n=1 and are skipped — which is what we want,
+                // since deltas don't contain identity for unchanged drivers.
+                _driverListSnapshotJson = json;
             }
 
             if (_driverInfoEmitted) return;
@@ -217,6 +236,14 @@ namespace F1SimHubLive.F1Signalr
             // DriverInfo gate so the new driver's identity is re-resolved.
             _driverInfoEmitted = false;
             _log($"driver switch {previous} -> {normalized}");
+
+            // Try to resolve the new driver's identity immediately from the
+            // cached initial DriverList snapshot. Without this, the wheel
+            // shows the "F1 LIVE" fallback until the next DriverList delta
+            // happens to include the new driver — minutes-to-never during a
+            // quiet practice session.
+            var cached = _driverListSnapshotJson;
+            if (cached != null) EmitFromDriverList(cached);
         }
 
         public void Dispose()

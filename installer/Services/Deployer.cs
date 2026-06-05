@@ -197,19 +197,60 @@ public sealed class Deployer
 
     private void WriteSettings(DeployOptions opts)
     {
+        var settingsPath = Path.Combine(opts.SimHubInstallDir, "F1SimHubLive.Settings.json");
+
+        // Preserve user-tunable fields when upgrading. The installer UI only
+        // surfaces a handful of choices (driver, source, MV endpoint, picker
+        // checkbox); everything else lives in settings.json and is edited by
+        // hand or by the picker itself. Blindly rewriting the file every install
+        // wiped values like AutoLaunchPicker back to installer defaults — see
+        // .signing-runbook.md "Action items deferred" and the 2026-06-05
+        // working-memory entry.
+        bool? existingAutoLaunch = null;
+        int? existingOutputHz = null;
+        int? existingRenderDelayMs = null;
+        if (File.Exists(settingsPath))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(File.ReadAllText(settingsPath));
+                var root = doc.RootElement;
+                if (root.TryGetProperty("AutoLaunchPicker", out var a))
+                {
+                    if (a.ValueKind == JsonValueKind.True) existingAutoLaunch = true;
+                    else if (a.ValueKind == JsonValueKind.False) existingAutoLaunch = false;
+                }
+                if (root.TryGetProperty("OutputHz", out var o)
+                    && o.ValueKind == JsonValueKind.Number
+                    && o.TryGetInt32(out var hz)) existingOutputHz = hz;
+                if (root.TryGetProperty("RenderDelayMs", out var r)
+                    && r.ValueKind == JsonValueKind.Number
+                    && r.TryGetInt32(out var delay)) existingRenderDelayMs = delay;
+
+                L("Existing settings.json found — preserving "
+                    + $"AutoLaunchPicker={existingAutoLaunch?.ToString() ?? "(unset)"}, "
+                    + $"OutputHz={existingOutputHz?.ToString() ?? "(unset)"}, "
+                    + $"RenderDelayMs={existingRenderDelayMs?.ToString() ?? "(unset)"}");
+            }
+            catch (Exception ex)
+            {
+                L($"Existing settings.json could not be parsed ({ex.GetType().Name}: {ex.Message}) — writing fresh defaults.");
+            }
+        }
+
         var settings = new
         {
             DriverNumber = opts.DriverNumber,
-            OutputHz = 60,
-            RenderDelayMs = 0,
+            OutputHz = existingOutputHz ?? 60,
+            RenderDelayMs = existingRenderDelayMs ?? 0,
             Source = opts.Source,
             MultiViewerBaseUrl = opts.MultiViewerBaseUrl,
             MultiViewerPollMs = opts.MultiViewerPollMs,
             MultiViewerTimingPollMs = opts.MultiViewerTimingPollMs,
-            AutoLaunchPicker = opts.AutoLaunchPicker,
+            AutoLaunchPicker = existingAutoLaunch ?? opts.AutoLaunchPicker,
         };
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(Path.Combine(opts.SimHubInstallDir, "F1SimHubLive.Settings.json"), json, new UTF8Encoding(false));
+        File.WriteAllText(settingsPath, json, new UTF8Encoding(false));
     }
 
     /// <summary>

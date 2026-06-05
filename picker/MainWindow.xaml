@@ -143,13 +143,13 @@
                                             Margin="0,0,12,0">
                                     <TextBlock Text="{Binding Number}"
                                                FontSize="28" FontWeight="Black"
-                                               Foreground="#3C3C48"
+                                               Foreground="#E8E8EE"
                                                HorizontalAlignment="Right"
                                                LineHeight="30"
                                                LineStackingStrategy="BlockLineHeight" />
                                     <TextBlock Text="{Binding DriverPointsDisplay}"
-                                               FontSize="9" FontWeight="SemiBold"
-                                               Foreground="#6F6F7C"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="#B8B8C4"
                                                HorizontalAlignment="Right"
                                                Margin="0,-2,0,0" />
                                 </StackPanel>

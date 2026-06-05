@@ -77,4 +77,29 @@
     </ItemGroup>
   </Target>
 
+  <!--
+    Always rebuild the F1SimHubLive plugin DLL from source before embedding it
+    in the installer. Without this target the build picks up whatever stale
+    binary happens to be committed at installer/Assets/F1SimHubLive.dll —
+    which is what shipped (broken, no picker code) in every v1.1.x release
+    before v1.1.2. We pass DeploySimHub=false so the plugin csproj's
+    post-build deploy-to-SimHub step (scripts/deploy.ps1) doesn't fire and
+    interact with a running SimHub during installer builds.
+
+    Plugin csproj targets net48 with AppendTargetFrameworkToOutputPath=false,
+    so the build output lands at ..\bin\$(Configuration)\F1SimHubLive.dll
+    (no per-TFM subfolder). Always runs — adds ~3 sec to installer builds
+    and is the explicit fix for the v1.1.x stale-DLL bug.
+  -->
+  <Target Name="PublishPlugin"
+          BeforeTargets="ResolveReferences;PrepareResources;CoreCompile">
+    <Message Importance="high"
+             Text="Rebuilding F1SimHubLive plugin DLL ($(Configuration)) so the installer embeds the latest source..." />
+    <MSBuild Projects="..\F1SimHubLive.csproj"
+             Targets="Restore;Build"
+             Properties="Configuration=$(Configuration);DeploySimHub=false" />
+    <Copy SourceFiles="..\bin\$(Configuration)\F1SimHubLive.dll"
+          DestinationFiles="Assets\F1SimHubLive.dll" />
+  </Target>
+
 </Project>

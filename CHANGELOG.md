@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.1.3] — 2026-06-05
+
+### Added
+- **New `RpmShiftPercent` property for Ferrari-realistic LED behavior.** The original `RpmPercent` normalizes raw RPM over a fixed 13,000 ceiling — perfectly fine, but mismatched to what real F1 wheel LED bars actually do (greens visible while rolling out of the pit lane at 5–7K RPM, full bar at fast-corner peaks around 11.5K). When watching an onboard camera, viewers see Hamilton's Ferrari wheel light up greens during out-laps but their own SimHub wheel sits dark until ~10K RPM — the plugin was publishing the right RPM, but the percent normalization was pessimistic. `RpmShiftPercent` rescales RPM linearly between two new settings (`RpmShiftLightStartRpm` default 5500, `RpmShiftLightEndRpm` default 11500) into 0–100. Bind your wheel device's LED `ValueFormula` / `EnabledFormula` to `F1SimHubLivePlugin.RpmShiftPercent` instead of `F1SimHubLivePlugin.RpmPercent` to get the real-F1-wheel curve. Both new settings hot-reload on save and are preserved across installer upgrades. The legacy `RpmPercent` property is unchanged — existing LED configurations continue to behave identically.
+
 ## [1.1.2] — 2026-06-05
 
 ### Fixed

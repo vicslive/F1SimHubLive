@@ -14,6 +14,20 @@ namespace F1SimHubLive
 
         public string Source { get; set; } = "F1Live";
 
+        /// <summary>
+        /// RPM at which <c>RpmShiftPercent</c> reads 0%. Calibrated to real F1
+        /// wheel LED bars where the first green LED comes on while rolling out
+        /// of the pit lane. Default 5500 = visible greens during out-laps.
+        /// </summary>
+        public int RpmShiftLightStartRpm { get; set; } = 5500;
+
+        /// <summary>
+        /// RPM at which <c>RpmShiftPercent</c> reads 100% (full LED bar).
+        /// Default 11500 = a typical fast-corner / DRS-straight peak rather
+        /// than the regulation 15,000 ceiling that real cars rarely reach.
+        /// </summary>
+        public int RpmShiftLightEndRpm { get; set; } = 11500;
+
         public string MultiViewerBaseUrl { get; set; } = DefaultMultiViewerBaseUrl;
         public int MultiViewerPollMs { get; set; } = 250;
         public int MultiViewerTimingPollMs { get; set; } = 1000;

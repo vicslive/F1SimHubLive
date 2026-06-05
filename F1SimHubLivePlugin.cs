@@ -47,6 +47,7 @@ namespace F1SimHubLive
             Register("Source", _settings.Source);
             Register("Rpm", 0.0);
             Register("RpmPercent", 0.0);
+            Register("RpmShiftPercent", 0.0);
             Register("Gear", 0);
             Register("Speed", 0.0);
             Register("Throttle", 0.0);
@@ -354,6 +355,7 @@ namespace F1SimHubLive
             if (s == null) return;
             SetProp("Rpm", s.Rpm);
             SetProp("RpmPercent", ClampPercent(s.Rpm / RpmCeiling * 100.0));
+            SetProp("RpmShiftPercent", CalcShiftPercent(s.Rpm));
             SetProp("Gear", s.Gear);
             SetProp("Speed", s.Speed);
             UpdateTopSpeedFromLive(s.Speed);
@@ -369,6 +371,21 @@ namespace F1SimHubLive
         private const double RpmCeiling = 13000.0;
 
         private static double ClampPercent(double v) => v < 0 ? 0 : (v > 100 ? 100 : v);
+
+        /// <summary>
+        /// Rescales raw RPM into a "shift-light" 0..100 curve bounded by the
+        /// user-configurable <c>RpmShiftLightStartRpm</c> / <c>RpmShiftLightEndRpm</c>
+        /// settings. Lets wheel LED configs mirror real F1 LED bars (greens visible
+        /// during out-laps, full bar at fast-corner peaks) without the hard cap that
+        /// <c>RpmPercent</c> imposes via the fixed 13,000 ceiling.
+        /// </summary>
+        private double CalcShiftPercent(double rpm)
+        {
+            double start = _settings.RpmShiftLightStartRpm;
+            double end = _settings.RpmShiftLightEndRpm;
+            if (end <= start) return ClampPercent(rpm / RpmCeiling * 100.0); // misconfig — fall back
+            return ClampPercent((rpm - start) / (end - start) * 100.0);
+        }
 
         // Update the running session top speed from live telemetry (instantaneous Speed in km/h).
         // F1 broadcast "TOP" reflects the highest speed seen by any speed trap; our live feed

@@ -209,6 +209,8 @@ public sealed class Deployer
         bool? existingAutoLaunch = null;
         int? existingOutputHz = null;
         int? existingRenderDelayMs = null;
+        int? existingRpmShiftStart = null;
+        int? existingRpmShiftEnd = null;
         if (File.Exists(settingsPath))
         {
             try
@@ -226,11 +228,19 @@ public sealed class Deployer
                 if (root.TryGetProperty("RenderDelayMs", out var r)
                     && r.ValueKind == JsonValueKind.Number
                     && r.TryGetInt32(out var delay)) existingRenderDelayMs = delay;
+                if (root.TryGetProperty("RpmShiftLightStartRpm", out var ss)
+                    && ss.ValueKind == JsonValueKind.Number
+                    && ss.TryGetInt32(out var startRpm)) existingRpmShiftStart = startRpm;
+                if (root.TryGetProperty("RpmShiftLightEndRpm", out var se)
+                    && se.ValueKind == JsonValueKind.Number
+                    && se.TryGetInt32(out var endRpm)) existingRpmShiftEnd = endRpm;
 
                 L("Existing settings.json found — preserving "
                     + $"AutoLaunchPicker={existingAutoLaunch?.ToString() ?? "(unset)"}, "
                     + $"OutputHz={existingOutputHz?.ToString() ?? "(unset)"}, "
-                    + $"RenderDelayMs={existingRenderDelayMs?.ToString() ?? "(unset)"}");
+                    + $"RenderDelayMs={existingRenderDelayMs?.ToString() ?? "(unset)"}, "
+                    + $"RpmShiftLightStartRpm={existingRpmShiftStart?.ToString() ?? "(unset)"}, "
+                    + $"RpmShiftLightEndRpm={existingRpmShiftEnd?.ToString() ?? "(unset)"}");
             }
             catch (Exception ex)
             {
@@ -248,6 +258,8 @@ public sealed class Deployer
             MultiViewerPollMs = opts.MultiViewerPollMs,
             MultiViewerTimingPollMs = opts.MultiViewerTimingPollMs,
             AutoLaunchPicker = existingAutoLaunch ?? opts.AutoLaunchPicker,
+            RpmShiftLightStartRpm = existingRpmShiftStart ?? 5500,
+            RpmShiftLightEndRpm = existingRpmShiftEnd ?? 11500,
         };
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(settingsPath, json, new UTF8Encoding(false));

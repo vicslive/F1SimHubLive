@@ -140,7 +140,7 @@ In **Device Manager**, the wheel should appear under *Human Interface Devices* w
 ## What it does
 
 **Live telemetry (60 Hz interpolated):**
-- RPM, RpmPercent (0–100 normalized over 13,000)
+- RPM, RpmPercent (0–100 normalized over 13,000), RpmShiftPercent (0–100 rescaled between `RpmShiftLightStartRpm`/`RpmShiftLightEndRpm` — Ferrari-realistic LED curve)
 - Gear (0–8)
 - Speed (km/h)
 - Throttle / Brake (0–100)
@@ -240,6 +240,7 @@ All properties are exposed under the **`F1SimHubLivePlugin`** namespace (class n
 |---|---|---|
 | `Rpm` | double | 0–~15000 |
 | `RpmPercent` | double | 0–100 (normalized over 13000) |
+| `RpmShiftPercent` | double | 0–100 (rescaled between `RpmShiftLightStartRpm` and `RpmShiftLightEndRpm`; matches real F1 wheel LED curves) |
 | `Gear` | int | 0=N/R, 1–8 |
 | `Speed` | double | km/h |
 | `Throttle` | double | 0–100 |
@@ -616,6 +617,8 @@ powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1 -StartSimHub   # dep
 |---|---|---|
 | `DriverNumber` | `"44"` | F1 racing number string. `44`=Hamilton, `1`=Verstappen, `16`=Leclerc, `81`=Piastri, `4`=Norris, `63`=Russell, `55`=Sainz, `14`=Alonso, `11`=Pérez, `18`=Stroll. **Hot-reloadable in v1.1.0+** — changing this value (via JSON edit or the Driver Picker) is picked up by the plugin within ~250ms without restarting SimHub. |
 | `OutputHz` | `60` | Interpolation tick rate for car telemetry. 60 is plenty for LEDs; higher just uses more CPU. |
+| `RpmShiftLightStartRpm` | `5500` | RPM at which `RpmShiftPercent` reads 0%. Lower this to make greens light earlier during pit lane / out-laps. Hot-reloads. |
+| `RpmShiftLightEndRpm` | `11500` | RPM at which `RpmShiftPercent` reads 100% (full bar). Raise this if your team's PU peaks higher and you want headroom; lower it for an even more reactive bar. Hot-reloads. |
 | `RenderDelayMs` | `200` | Render lag. Holds 200ms of buffer so the interpolator always has `prev` + `curr` snapshots to interpolate between. Lower = less added latency but more "hold" between samples. |
 | `Source` | `"F1Live"` | `F1Live` (broadcast SignalR) or `MultiViewer` (local replay). |
 | `MultiViewerBaseUrl` | `http://localhost:10101` | F1 MultiViewer HTTP API root. Only used when `Source=MultiViewer`. |

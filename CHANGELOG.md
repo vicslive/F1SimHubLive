@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.3.1] — 2026-06-06
+
+### Fixed
+- **Picker now refreshes driver team info when MultiViewer switches sessions.** `DriverTimingRow.{Tla, LastName, TeamName, TeamColour}` were declared as `{ get; init; }` (C# init-only), so once a row was created the team paint and TLA were locked in. The polling loop refreshed `_drivers` from MV's `/DriverList` every 30 seconds (correctly), and re-used existing rows by `RacingNumber` (correctly), but only updated the *mutable* fields (Position, LastLap, gap, sectors, tyre, pit count) — the language wouldn't let it touch team info even though the latest snapshot had the right values sitting right there. Most visible symptom: load a 2020 race replay in MV after the picker was already running and Hamilton would still show as Ferrari (his 2026 team) with the wrong livery colour, while drivers who only exist in one era (Räikkönen, Grosjean, Latifi for 2020; Bortoleto, Antonelli for 2026) showed correctly because they were brand-new rows created with the right team info from their very first poll. Fix: convert those four fields to mutable INPC properties (`RacingNumber` stays `init` — it's the dictionary key) and add a "refresh from snapshot" pass in the row-exists branch of `ApplySnapshot`. Identity diffs only fire `PropertyChanged` when a value actually changes, so the steady-state cost is zero. WPF repaints just the affected cells via INPC.
+
 ## [1.3.0] — 2026-06-06
 
 ### Changed

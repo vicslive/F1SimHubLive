@@ -5,8 +5,8 @@
         xmlns:models="clr-namespace:F1SimHubLive.Picker.Models"
         Title="F1SimHubLive"
         Icon="Assets/picker.ico"
-        Width="760" Height="960"
-        MinWidth="660" MinHeight="540"
+        Width="860" Height="960"
+        MinWidth="760" MinHeight="540"
         Background="#0F0F12"
         Foreground="#E8E8EC"
         FontFamily="Segoe UI"
@@ -265,7 +265,7 @@
                                 Margin="0,0,0,6"
                                 Click="DriverButton_Click"
                                 Tag="{Binding RacingNumber}">
-                            <Grid Height="64">
+                            <Grid Height="72">
                                 <Grid.ColumnDefinitions>
                                     <!-- Position number -->
                                     <ColumnDefinition Width="36" />
@@ -273,6 +273,8 @@
                                     <ColumnDefinition Width="60" />
                                     <!-- Driver name + team -->
                                     <ColumnDefinition Width="*" />
+                                    <!-- Current speed (km/h) -->
+                                    <ColumnDefinition Width="78" />
                                     <!-- LAST + BEST lap times -->
                                     <ColumnDefinition Width="95" />
                                     <!-- INT + GAP -->
@@ -281,8 +283,8 @@
                                     <ColumnDefinition Width="58" />
                                     <!-- Pit count -->
                                     <ColumnDefinition Width="34" />
-                                    <!-- Sector segment strip (3 sectors) -->
-                                    <ColumnDefinition Width="180" />
+                                    <!-- Sector segment strip (3 sectors, two-row times) -->
+                                    <ColumnDefinition Width="200" />
                                 </Grid.ColumnDefinitions>
 
                                 <!-- Position -->
@@ -319,8 +321,28 @@
                                                Margin="0,1,0,0" />
                                 </StackPanel>
 
-                                <!-- LAST + BEST lap times stack -->
+                                <!-- Current speed (km/h) — big number with a tiny unit label.
+                                     Updated from MV CarData channel "2" via the
+                                     telemetry client's OnSpeedsBatch event. -->
                                 <StackPanel Grid.Column="3" VerticalAlignment="Center"
+                                            HorizontalAlignment="Right"
+                                            Margin="0,0,8,0">
+                                    <TextBlock Text="{Binding SpeedKmh}"
+                                               FontSize="22" FontWeight="Black"
+                                               Foreground="#E8E8EE"
+                                               TextAlignment="Right"
+                                               FontFamily="Consolas"
+                                               LineHeight="22"
+                                               LineStackingStrategy="BlockLineHeight" />
+                                    <TextBlock Text="km/h"
+                                               FontSize="9" FontWeight="SemiBold"
+                                               Foreground="#6F6F7A"
+                                               TextAlignment="Right"
+                                               Margin="0,1,0,0" />
+                                </StackPanel>
+
+                                <!-- LAST + BEST lap times stack -->
+                                <StackPanel Grid.Column="4" VerticalAlignment="Center"
                                             Margin="0,0,4,0">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -357,7 +379,7 @@
                                 </StackPanel>
 
                                 <!-- INT + GAP stack -->
-                                <StackPanel Grid.Column="4" VerticalAlignment="Center"
+                                <StackPanel Grid.Column="5" VerticalAlignment="Center"
                                             Margin="0,0,4,0">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -394,7 +416,7 @@
                                 </StackPanel>
 
                                 <!-- Tire badge + age -->
-                                <StackPanel Grid.Column="5"
+                                <StackPanel Grid.Column="6"
                                             Orientation="Vertical"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center">
@@ -417,7 +439,7 @@
                                 </StackPanel>
 
                                 <!-- Pit count -->
-                                <StackPanel Grid.Column="6"
+                                <StackPanel Grid.Column="7"
                                             Orientation="Vertical"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
@@ -434,8 +456,12 @@
                                                LineStackingStrategy="BlockLineHeight" />
                                 </StackPanel>
 
-                                <!-- Sector segment strip -->
-                                <Grid Grid.Column="7" Margin="6,8,4,8">
+                                <!-- Sector segment strip — three sectors, each with
+                                     mini-bars on top, current sector time in the
+                                     middle, and best sector time at the bottom
+                                     (yellow=PB, purple=session best), matching
+                                     MultiViewer's two-row time stack. -->
+                                <Grid Grid.Column="8" Margin="6,6,4,6">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="*" />
@@ -444,9 +470,10 @@
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="*" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
-                                    <!-- S1 -->
+                                    <!-- S1 segments -->
                                     <ItemsControl Grid.Column="0" Grid.Row="0"
                                                   ItemsSource="{Binding Sectors[0].Segments}"
                                                   Margin="0,0,2,0">
@@ -470,8 +497,15 @@
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
                                                Margin="0,2,2,0" />
+                                    <TextBlock Grid.Column="0" Grid.Row="2"
+                                               Text="{Binding Sectors[0].BestTime}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[0].BestStatus, Converter={StaticResource LapStatusToBrush}}"
+                                               FontFamily="Consolas"
+                                               TextAlignment="Center"
+                                               Margin="0,0,2,0" />
 
-                                    <!-- S2 -->
+                                    <!-- S2 segments -->
                                     <ItemsControl Grid.Column="1" Grid.Row="0"
                                                   ItemsSource="{Binding Sectors[1].Segments}"
                                                   Margin="0,0,2,0">
@@ -495,8 +529,15 @@
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
                                                Margin="0,2,2,0" />
+                                    <TextBlock Grid.Column="1" Grid.Row="2"
+                                               Text="{Binding Sectors[1].BestTime}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[1].BestStatus, Converter={StaticResource LapStatusToBrush}}"
+                                               FontFamily="Consolas"
+                                               TextAlignment="Center"
+                                               Margin="0,0,2,0" />
 
-                                    <!-- S3 -->
+                                    <!-- S3 segments -->
                                     <ItemsControl Grid.Column="2" Grid.Row="0"
                                                   ItemsSource="{Binding Sectors[2].Segments}">
                                         <ItemsControl.ItemsPanel>
@@ -519,6 +560,13 @@
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
                                                Margin="0,2,0,0" />
+                                    <TextBlock Grid.Column="2" Grid.Row="2"
+                                               Text="{Binding Sectors[2].BestTime}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[2].BestStatus, Converter={StaticResource LapStatusToBrush}}"
+                                               FontFamily="Consolas"
+                                               TextAlignment="Center"
+                                               Margin="0,0,0,0" />
                                 </Grid>
                             </Grid>
                         </Button>

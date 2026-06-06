@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
@@ -40,6 +41,12 @@ internal sealed class PickerTelemetryClient : IDisposable
 
     public event Action<double>? OnRpm;
     public event Action<string>? OnStatus;
+    /// <summary>
+    /// Fires every poll with the latest speed in km/h for every driver
+    /// that appeared in the freshest CarData entry. Empty dictionary if
+    /// CarData wasn't parseable. Keyed by racing number (e.g. "44").
+    /// </summary>
+    public event Action<IReadOnlyDictionary<string, int>>? OnSpeedsBatch;
 
     public PickerTelemetryClient(string baseUrl)
     {
@@ -96,17 +103,27 @@ internal sealed class PickerTelemetryClient : IDisposable
             try
             {
                 string json = await _http.GetStringAsync(url, ct).ConfigureAwait(false);
-                if (TryParseLatestRpm(json, driver, out double rpm, out DateTime utc)
-                    && utc > _lastEmittedUtc)
+
+                // Parse once, harvest both: per-driver speeds (every car in
+                // the freshest entry) AND the selected driver's RPM.
+                if (TryParseLatest(json, driver, out double rpm, out DateTime utc, out var speeds))
                 {
-                    _lastEmittedUtc = utc;
-                    OnRpm?.Invoke(rpm);
-                    if (!everConnected)
+                    if (speeds.Count > 0)
                     {
-                        everConnected = true;
-                        OnStatus?.Invoke("Live telemetry connected");
+                        OnSpeedsBatch?.Invoke(speeds);
                     }
-                    consecutiveFailures = 0;
+
+                    if (utc > _lastEmittedUtc)
+                    {
+                        _lastEmittedUtc = utc;
+                        OnRpm?.Invoke(rpm);
+                        if (!everConnected)
+                        {
+                            everConnected = true;
+                            OnStatus?.Invoke("Live telemetry connected");
+                        }
+                        consecutiveFailures = 0;
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -136,49 +153,60 @@ internal sealed class PickerTelemetryClient : IDisposable
         catch (OperationCanceledException) { }
     }
 
-    internal static bool TryParseLatestRpm(string json, string driverNumber, out double rpm, out DateTime utc)
+    internal static bool TryParseLatest(
+        string json,
+        string driverNumber,
+        out double rpm,
+        out DateTime utc,
+        out Dictionary<string, int> speeds)
     {
         rpm = 0;
         utc = DateTime.MinValue;
+        speeds = new Dictionary<string, int>();
         try
         {
             using var doc = JsonDocument.Parse(json);
             if (!doc.RootElement.TryGetProperty("Entries", out var entries)
-                || entries.ValueKind != JsonValueKind.Array)
+                || entries.ValueKind != JsonValueKind.Array
+                || entries.GetArrayLength() == 0)
                 return false;
 
-            // Walk in reverse to find the newest entry that has data for our
-            // driver. Most CarData payloads are time-ordered ascending and
-            // contain ~5 entries; the last one is the freshest.
+            // Walk in reverse to find the freshest entry that has data.
+            // We harvest speeds for ALL drivers from that single entry —
+            // CarData payloads typically carry the full grid per frame.
             for (int i = entries.GetArrayLength() - 1; i >= 0; i--)
             {
                 var entry = entries[i];
                 if (!entry.TryGetProperty("Cars", out var cars)
                     || cars.ValueKind != JsonValueKind.Object)
                     continue;
-                if (!cars.TryGetProperty(driverNumber, out var car)
-                    || !car.TryGetProperty("Channels", out var channels)
-                    || !channels.TryGetProperty("0", out var rpmEl))
-                    continue;
 
-                if (rpmEl.ValueKind == JsonValueKind.Number)
-                    rpm = rpmEl.GetDouble();
-                else if (rpmEl.ValueKind == JsonValueKind.String
-                         && double.TryParse(rpmEl.GetString(), out var parsed))
-                    rpm = parsed;
-                else
-                    continue;
+                // Speed for every driver in this entry (channel "2" = km/h).
+                foreach (var carProp in cars.EnumerateObject())
+                {
+                    if (!carProp.Value.TryGetProperty("Channels", out var ch)
+                        || ch.ValueKind != JsonValueKind.Object) continue;
+                    if (!ch.TryGetProperty("2", out var speedEl)) continue;
+                    if (TryReadDouble(speedEl, out var spdKmh))
+                    {
+                        speeds[carProp.Name] = (int)Math.Round(spdKmh);
+                    }
+                }
 
-                if (entry.TryGetProperty("Utc", out var utcEl)
-                    && utcEl.ValueKind == JsonValueKind.String
-                    && DateTime.TryParse(utcEl.GetString(), out var parsedUtc))
+                // RPM for the selected driver (channel "0").
+                if (cars.TryGetProperty(driverNumber, out var car)
+                    && car.TryGetProperty("Channels", out var channels)
+                    && channels.TryGetProperty("0", out var rpmEl)
+                    && TryReadDouble(rpmEl, out var rpmVal))
                 {
-                    utc = parsedUtc.ToUniversalTime();
+                    rpm = rpmVal;
                 }
-                else
-                {
-                    utc = DateTime.UtcNow;
-                }
+
+                utc = entry.TryGetProperty("Utc", out var utcEl)
+                      && utcEl.ValueKind == JsonValueKind.String
+                      && DateTime.TryParse(utcEl.GetString(), out var parsedUtc)
+                    ? parsedUtc.ToUniversalTime()
+                    : DateTime.UtcNow;
                 return true;
             }
         }
@@ -187,5 +215,20 @@ internal sealed class PickerTelemetryClient : IDisposable
             // Schema drift or partial payload — caller treats as "no value".
         }
         return false;
+    }
+
+    private static bool TryReadDouble(JsonElement el, out double value)
+    {
+        switch (el.ValueKind)
+        {
+            case JsonValueKind.Number:
+                value = el.GetDouble();
+                return true;
+            case JsonValueKind.String:
+                return double.TryParse(el.GetString(), out value);
+            default:
+                value = 0;
+                return false;
+        }
     }
 }

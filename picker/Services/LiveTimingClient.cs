@@ -37,6 +37,16 @@ public sealed class LiveTimingClient : IDisposable
     private DateTime _lastDriverListFetch = DateTime.MinValue;
     private Dictionary<string, DriverInfo> _drivers = new();
 
+    /// <summary>
+    /// Per-driver best sector seconds (3 entries each, double.MaxValue
+    /// when no time recorded yet). Used to compute session bests and to
+    /// preserve a driver's PB across the session — MV's TimingData only
+    /// flags PersonalFastest on the LAP that set the time, so we keep the
+    /// running minimum ourselves.
+    /// </summary>
+    private readonly Dictionary<string, double[]> _bestSectorSeconds = new();
+    private readonly Dictionary<string, string[]> _bestSectorStrings = new();
+
     /// <summary>Drivers keyed by RacingNumber, kept in position order.</summary>
     public ObservableCollection<DriverTimingRow> Rows { get; } = new();
 
@@ -184,8 +194,31 @@ public sealed class LiveTimingClient : IDisposable
                             segments.Add(seg?["Status"]?.GetValue<int>() ?? 0);
                         }
                     }
+                    string timeStr = s["Value"]?.GetValue<string>() ?? s["PreviousValue"]?.GetValue<string>() ?? "";
+
+                    // Track this driver's PB for the sector. We compare
+                    // against the running min because MV only stamps
+                    // PersonalFastest on the lap that sets it.
+                    if (!string.IsNullOrEmpty(timeStr)
+                        && double.TryParse(timeStr, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double sectorSecs)
+                        && sectorSecs > 0)
+                    {
+                        if (!_bestSectorSeconds.TryGetValue(racingNumber, out var bestSecs))
+                        {
+                            bestSecs = new[] { double.MaxValue, double.MaxValue, double.MaxValue };
+                            _bestSectorSeconds[racingNumber] = bestSecs;
+                            _bestSectorStrings[racingNumber] = new[] { "", "", "" };
+                        }
+                        if (sectorSecs < bestSecs[i])
+                        {
+                            bestSecs[i] = sectorSecs;
+                            _bestSectorStrings[racingNumber][i] = timeStr;
+                        }
+                    }
+
                     sectorData[i] = new SectorSnapshot(
-                        Time: s["Value"]?.GetValue<string>() ?? s["PreviousValue"]?.GetValue<string>() ?? "",
+                        Time: timeStr,
                         Status: SectorFlag(s),
                         Segments: segments
                     );
@@ -314,6 +347,19 @@ public sealed class LiveTimingClient : IDisposable
         // Build a lookup by RacingNumber for the existing rows.
         var existing = Rows.ToDictionary(r => r.RacingNumber);
 
+        // Compute the field-wide minimum per sector so we know whose PB is
+        // also the session best (purple) vs just their personal best (yellow).
+        // _bestSectorSeconds is mutated by the parsing pass before us, so it
+        // already includes the freshest sector times for everyone.
+        var fieldMin = new double[3] { double.MaxValue, double.MaxValue, double.MaxValue };
+        foreach (var kv in _bestSectorSeconds)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                if (kv.Value[i] < fieldMin[i]) fieldMin[i] = kv.Value[i];
+            }
+        }
+
         // Update / insert.
         for (int i = 0; i < snaps.Count; i++)
         {
@@ -347,10 +393,25 @@ public sealed class LiveTimingClient : IDisposable
             row.IsCurrent = row.RacingNumber == _currentDriverNumber;
 
             // Sectors are pre-allocated to 3 entries; only update what's there.
+            _bestSectorStrings.TryGetValue(s.Info.RacingNumber, out var driverBestStrings);
+            _bestSectorSeconds.TryGetValue(s.Info.RacingNumber, out var driverBestSecs);
             for (int sIdx = 0; sIdx < 3; sIdx++)
             {
                 var snap = s.Sectors[sIdx];
                 var target = row.Sectors[sIdx];
+
+                // Best-sector row: yellow if PB only, purple if session best.
+                string bestStr = driverBestStrings != null ? driverBestStrings[sIdx] : "";
+                LapStatus bestStatus = LapStatus.None;
+                if (!string.IsNullOrEmpty(bestStr) && driverBestSecs != null)
+                {
+                    bestStatus = driverBestSecs[sIdx] <= fieldMin[sIdx] + 1e-6
+                        ? LapStatus.SessionBest
+                        : LapStatus.PersonalBest;
+                }
+                target.BestTime = bestStr;
+                target.BestStatus = bestStatus;
+
                 if (snap == null)
                 {
                     target.Time = "";

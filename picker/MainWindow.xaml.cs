@@ -100,11 +100,23 @@ public partial class MainWindow : Window
         }));
         _telemetry.OnStatus += s => Dispatcher.BeginInvoke(new Action(() =>
         {
-            // Telemetry status is informational; the 5-second driver-list
-            // poller owns StatusText. We could surface "telemetry
-            // disconnected" later if there's a real need; for now the LED
-            // strip going dim is its own signal.
+            // Telemetry status is informational; the live-timing client owns
+            // StatusText. Surface "telemetry disconnected" later if needed;
+            // for now the LED strip going dim is its own signal.
             _ = s;
+        }));
+        // Per-driver speed batch (km/h) — pushed into the matching
+        // DriverTimingRow so each row can render the current car speed.
+        _telemetry.OnSpeedsBatch += speeds => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var rows = _liveTimingClient.Rows;
+            foreach (var row in rows)
+            {
+                if (speeds.TryGetValue(row.RacingNumber, out var spd))
+                {
+                    row.SpeedKmh = spd;
+                }
+            }
         }));
         if (!string.IsNullOrEmpty(_currentDriverNumber))
             _telemetry.SetDriverNumber(_currentDriverNumber);

@@ -89,13 +89,37 @@
         </Border>
 
         <!-- Footer -->
-        <TextBlock DockPanel.Dock="Bottom"
-                   x:Name="SettingsPathText"
-                   Text=""
-                   FontSize="10" Foreground="#55555F"
-                   TextTrimming="CharacterEllipsis"
-                   Margin="0,8,0,0"
-                   ToolTipService.ShowDuration="20000" />
+        <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="VersionText"
+                       Grid.Column="0"
+                       Text="v?.?.?"
+                       FontSize="14" FontWeight="SemiBold"
+                       Foreground="#C8C8D0"
+                       VerticalAlignment="Center"
+                       ToolTipService.ShowDuration="20000" />
+            <TextBlock x:Name="UpdateText"
+                       Grid.Column="1"
+                       Visibility="Collapsed"
+                       FontSize="14" FontWeight="SemiBold"
+                       VerticalAlignment="Center">
+                <Hyperlink x:Name="UpdateLink"
+                           Foreground="#F5C04C"
+                           TextDecorations="None"
+                           RequestNavigate="UpdateLink_RequestNavigate"
+                           NavigateUri="https://github.com/vicslive/F1SimHubLive/releases">
+                    <Run x:Name="UpdateRun" Text="▲ update available" />
+                </Hyperlink>
+            </TextBlock>
+        </Grid>
+
+        <!-- Hidden — kept so existing code that writes to SettingsPathText
+             (tooltip text) still compiles. The path now lives in
+             VersionText.ToolTip. -->
+        <TextBlock x:Name="SettingsPathText" Visibility="Collapsed" />
 
         <!-- Driver list -->
         <ScrollViewer VerticalScrollBarVisibility="Auto"

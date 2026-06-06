@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Navigation;
 using System.Windows.Threading;
 using F1SimHubLive.Picker.Models;
 using F1SimHubLive.Picker.Services;
@@ -40,7 +43,11 @@ public partial class MainWindow : Window
         _mv = new MultiViewerDriverListClient(mvUrl ?? DefaultMvUrl);
 
         SettingsPathText.Text = _settingsPath;
-        SettingsPathText.ToolTip = $"Settings file:\n{_settingsPath}\n\nMultiViewer:\n{mvUrl ?? DefaultMvUrl}";
+        VersionText.Text = $"v{GetDisplayVersion()}";
+        VersionText.ToolTip =
+            $"F1SimHubLive Driver Picker v{GetDisplayVersion()}\n\n" +
+            $"Settings file:\n{_settingsPath}\n\n" +
+            $"MultiViewer:\n{mvUrl ?? DefaultMvUrl}";
 
         _currentDriverNumber = SettingsFileWriter.ReadCurrentDriverNumber(_settingsPath) ?? "";
         UpdateCurrentDriverText();
@@ -72,6 +79,7 @@ public partial class MainWindow : Window
         {
             await PollDriverListAsync();
             _pollTimer.Start();
+            _ = CheckForUpdateAsync(); // fire-and-forget; UI updates if newer
         };
 
         Closed += (_, _) =>
@@ -218,5 +226,80 @@ public partial class MainWindow : Window
     private void TopmostCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (sender is CheckBox cb) Topmost = cb.IsChecked == true;
+    }
+
+    private static string GetDisplayVersion()
+    {
+        // Prefer InformationalVersion (settable to "1.1.4" without the
+        // trailing ".0" the runtime forces onto AssemblyVersion).
+        var asm = Assembly.GetExecutingAssembly();
+        var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(info))
+        {
+            // Strip "+commitsha" suffix that the .NET SDK appends in some
+            // build configurations.
+            int plus = info.IndexOf('+');
+            return plus >= 0 ? info.Substring(0, plus) : info;
+        }
+        var v = asm.GetName().Version;
+        if (v is null) return "0.0.0";
+        return v.Build > 0 ? $"{v.Major}.{v.Minor}.{v.Build}" : $"{v.Major}.{v.Minor}";
+    }
+
+    private async Task CheckForUpdateAsync()
+    {
+        try
+        {
+            var current = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0);
+            var checker = new UpdateChecker(current);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_ctsLifetime.Token);
+            cts.CancelAfter(TimeSpan.FromSeconds(5));
+            var result = await checker.CheckAsync(cts.Token).ConfigureAwait(true);
+            ApplyUpdateResult(result);
+        }
+        catch
+        {
+            // Best-effort: any failure leaves the UI in its default "no update"
+            // state. The version label is still visible.
+        }
+    }
+
+    private void ApplyUpdateResult(UpdateCheckResult result)
+    {
+        if (!result.IsUpdateAvailable || result.LatestTag is null)
+        {
+            UpdateText.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        UpdateRun.Text = $"▲ {result.LatestTag} available — update";
+        if (!string.IsNullOrWhiteSpace(result.HtmlUrl))
+        {
+            UpdateLink.NavigateUri = new Uri(result.HtmlUrl);
+        }
+        UpdateText.ToolTip =
+            $"You are running v{GetDisplayVersion()}.\n" +
+            $"Latest GitHub release: {result.LatestTag}.\n\n" +
+            "Click to open the release page in your browser.";
+        UpdateText.Visibility = Visibility.Visible;
+    }
+
+    private void UpdateLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        try
+        {
+            // ProcessStartInfo with UseShellExecute is the canonical way to
+            // open a URL in the user's default browser from a WPF app.
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = e.Uri.AbsoluteUri,
+                UseShellExecute = true,
+            });
+            e.Handled = true;
+        }
+        catch
+        {
+            // Fall back silently — the URL is still visible in the link text.
+        }
     }
 }

@@ -16,6 +16,11 @@
     <Window.Resources>
         <svc:HexToBrushConverter x:Key="HexToBrush" />
         <svc:LapStatusToBrushConverter x:Key="LapStatusToBrush" />
+        <svc:LapStatusToBoxBackgroundConverter x:Key="LapStatusToBoxBg" />
+        <svc:LapStatusToBoxForegroundConverter x:Key="LapStatusToBoxFg" />
+        <svc:InPitTextToBackgroundConverter x:Key="InPitToBg" />
+        <svc:InPitTextToForegroundConverter x:Key="InPitToFg" />
+        <svc:SectorStatusToBrushConverter x:Key="SectorStatusToBrush" />
         <svc:SegmentStatusToBrushConverter x:Key="SegmentStatusToBrush" />
         <svc:PositionToTextConverter x:Key="PositionToText" />
         <svc:TruthyToVisibilityConverter x:Key="TruthyToVisibility" />
@@ -118,7 +123,7 @@
                                 <Border Background="{Binding}"
                                         Margin="1,0"
                                         CornerRadius="2"
-                                        Height="18" />
+                                        Height="22" />
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
@@ -266,7 +271,7 @@
                                 Margin="0,0,0,3"
                                 Click="DriverButton_Click"
                                 Tag="{Binding RacingNumber}">
-                            <Grid Height="46">
+                            <Grid Height="56">
                                 <Grid.ColumnDefinitions>
                                     <!-- Position number -->
                                     <ColumnDefinition Width="30" />
@@ -340,11 +345,11 @@
                                             HorizontalAlignment="Right"
                                             Margin="0,0,6,0">
                                     <TextBlock Text="{Binding SpeedKmh}"
-                                               FontSize="17" FontWeight="Black"
+                                               FontSize="20" FontWeight="Black"
                                                Foreground="#E8E8EE"
                                                TextAlignment="Right"
                                                FontFamily="Consolas"
-                                               LineHeight="18"
+                                               LineHeight="22"
                                                LineStackingStrategy="BlockLineHeight" />
                                     <TextBlock Text="km/h"
                                                FontSize="8" FontWeight="SemiBold"
@@ -365,12 +370,17 @@
                                                    FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding LastLapTime}"
-                                                   FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{Binding LastLapStatus, Converter={StaticResource LapStatusToBrush}}"
-                                                   TextAlignment="Right"
-                                                   FontFamily="Consolas" />
+                                        <Border Grid.Column="1"
+                                                Background="{Binding LastLapStatus, Converter={StaticResource LapStatusToBoxBg}}"
+                                                CornerRadius="8" Padding="6,0"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding LastLapTime}"
+                                                       FontSize="14" FontWeight="Bold"
+                                                       Foreground="{Binding LastLapStatus, Converter={StaticResource LapStatusToBoxFg}}"
+                                                       TextAlignment="Right"
+                                                       FontFamily="Consolas" />
+                                        </Border>
                                     </Grid>
                                     <Grid Margin="0,1,0,0">
                                         <Grid.ColumnDefinitions>
@@ -381,12 +391,17 @@
                                                    FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding BestLapTime}"
-                                                   FontSize="12" FontWeight="SemiBold"
-                                                   Foreground="{Binding BestLapStatus, Converter={StaticResource LapStatusToBrush}}"
-                                                   TextAlignment="Right"
-                                                   FontFamily="Consolas" />
+                                        <Border Grid.Column="1"
+                                                Background="{Binding BestLapStatus, Converter={StaticResource LapStatusToBoxBg}}"
+                                                CornerRadius="8" Padding="6,0"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding BestLapTime}"
+                                                       FontSize="14" FontWeight="Bold"
+                                                       Foreground="{Binding BestLapStatus, Converter={StaticResource LapStatusToBoxFg}}"
+                                                       TextAlignment="Right"
+                                                       FontFamily="Consolas" />
+                                        </Border>
                                     </Grid>
                                 </StackPanel>
 
@@ -403,12 +418,17 @@
                                                    FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding IntervalToAhead}"
-                                                   FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="#C8C8D0"
-                                                   TextAlignment="Right"
-                                                   FontFamily="Consolas" />
+                                        <Border Grid.Column="1"
+                                                Background="{Binding IntervalToAhead, Converter={StaticResource InPitToBg}}"
+                                                CornerRadius="8" Padding="6,0"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding IntervalToAhead}"
+                                                       FontSize="14" FontWeight="Bold"
+                                                       Foreground="{Binding IntervalToAhead, Converter={StaticResource InPitToFg}}"
+                                                       TextAlignment="Right"
+                                                       FontFamily="Consolas" />
+                                        </Border>
                                     </Grid>
                                     <Grid Margin="0,1,0,0">
                                         <Grid.ColumnDefinitions>
@@ -419,12 +439,17 @@
                                                    FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding GapToLeader}"
-                                                   FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="#C8C8D0"
-                                                   TextAlignment="Right"
-                                                   FontFamily="Consolas" />
+                                        <Border Grid.Column="1"
+                                                Background="{Binding GapToLeader, Converter={StaticResource InPitToBg}}"
+                                                CornerRadius="8" Padding="6,0"
+                                                HorizontalAlignment="Right"
+                                                VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding GapToLeader}"
+                                                       FontSize="14" FontWeight="Bold"
+                                                       Foreground="{Binding GapToLeader, Converter={StaticResource InPitToFg}}"
+                                                       TextAlignment="Right"
+                                                       FontFamily="Consolas" />
+                                        </Border>
                                     </Grid>
                                 </StackPanel>
 
@@ -437,21 +462,21 @@
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center">
                                     <Border Background="{Binding TireCompoundColor, Converter={StaticResource HexToBrush}}"
-                                            Width="28" Height="28"
-                                            CornerRadius="14"
+                                            Width="34" Height="34"
+                                            CornerRadius="17"
                                             BorderBrush="#0A0A0E"
                                             BorderThickness="2">
                                         <TextBlock Text="{Binding TireCompoundLetter}"
                                                    Foreground="#0A0A0E"
-                                                   FontSize="13" FontWeight="Black"
+                                                   FontSize="15" FontWeight="Black"
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center" />
                                     </Border>
                                     <TextBlock Text="{Binding TireAge, StringFormat='L{0}'}"
-                                               FontSize="9" FontWeight="SemiBold"
+                                               FontSize="10" FontWeight="SemiBold"
                                                Foreground="#B8B8C4"
                                                HorizontalAlignment="Center"
-                                               Margin="0,0,0,0" />
+                                               Margin="0,1,0,0" />
                                 </StackPanel>
 
                                 <!-- Pit count -->
@@ -465,10 +490,10 @@
                                                Foreground="#6F6F7A"
                                                HorizontalAlignment="Center" />
                                     <TextBlock Text="{Binding PitStopCount}"
-                                               FontSize="14" FontWeight="Black"
+                                               FontSize="16" FontWeight="Black"
                                                Foreground="#E8E8EE"
                                                HorizontalAlignment="Center"
-                                               LineHeight="16"
+                                               LineHeight="18"
                                                LineStackingStrategy="BlockLineHeight" />
                                 </StackPanel>
 
@@ -513,15 +538,15 @@
                                     </ItemsControl>
                                     <TextBlock Grid.Column="0" Grid.Row="1"
                                                Text="{Binding Sectors[0].Time}"
-                                               FontSize="9" FontWeight="SemiBold"
-                                               Foreground="{Binding Sectors[0].Status, Converter={StaticResource LapStatusToBrush}}"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[0].Status, Converter={StaticResource SectorStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
                                                Margin="0,1,2,0" />
                                     <TextBlock Grid.Column="0" Grid.Row="2"
                                                Text="{Binding Sectors[0].BestTime}"
-                                               FontSize="9" FontWeight="SemiBold"
-                                               Foreground="{Binding Sectors[0].BestStatus, Converter={StaticResource LapStatusToBrush}}"
+                                               FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[0].BestStatus, Converter={StaticResource SectorStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
                                                Margin="0,0,2,0" />
@@ -545,15 +570,15 @@
                                     </ItemsControl>
                                     <TextBlock Grid.Column="1" Grid.Row="1"
                                                Text="{Binding Sectors[1].Time}"
-                                               FontSize="9" FontWeight="SemiBold"
-                                               Foreground="{Binding Sectors[1].Status, Converter={StaticResource LapStatusToBrush}}"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[1].Status, Converter={StaticResource SectorStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
                                                Margin="0,1,2,0" />
                                     <TextBlock Grid.Column="1" Grid.Row="2"
                                                Text="{Binding Sectors[1].BestTime}"
-                                               FontSize="9" FontWeight="SemiBold"
-                                               Foreground="{Binding Sectors[1].BestStatus, Converter={StaticResource LapStatusToBrush}}"
+                                               FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[1].BestStatus, Converter={StaticResource SectorStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
                                                Margin="0,0,2,0" />
@@ -576,15 +601,15 @@
                                     </ItemsControl>
                                     <TextBlock Grid.Column="2" Grid.Row="1"
                                                Text="{Binding Sectors[2].Time}"
-                                               FontSize="9" FontWeight="SemiBold"
-                                               Foreground="{Binding Sectors[2].Status, Converter={StaticResource LapStatusToBrush}}"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[2].Status, Converter={StaticResource SectorStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
                                                Margin="0,1,0,0" />
                                     <TextBlock Grid.Column="2" Grid.Row="2"
                                                Text="{Binding Sectors[2].BestTime}"
-                                               FontSize="9" FontWeight="SemiBold"
-                                               Foreground="{Binding Sectors[2].BestStatus, Converter={StaticResource LapStatusToBrush}}"
+                                               FontSize="12" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[2].BestStatus, Converter={StaticResource SectorStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
                                                Margin="0,0,0,0" />

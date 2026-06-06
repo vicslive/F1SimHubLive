@@ -368,10 +368,9 @@ public partial class MainWindow : Window
 
     private void InitializeLedStrip()
     {
-        // Items render TOP-to-BOTTOM in the StackPanel, but the LED bar
-        // should fill BOTTOM-to-TOP (LED 1 lights first at low RPM). We
-        // therefore store brushes with index 0 = bottom-most LED and add
-        // them in REVERSE order so the visual ends up bottom-up.
+        // Horizontal LED bar in the header: brush index 0 = LED 1 on the
+        // left (lights first at low RPM), index LedCount-1 = redline LED
+        // on the right (lights last). UniformGrid renders left-to-right.
         _ledBrushes.Clear();
         for (int i = 0; i < LedCount; i++) _ledBrushes.Add(DimLedBrush);
         LedStrip.ItemsSource = _ledBrushes;
@@ -460,20 +459,19 @@ public partial class MainWindow : Window
         double range = Math.Max(1, _endRpm - _startRpm);
         double percent = Math.Clamp((rpm - _startRpm) / range * 100.0, 0, 100);
         // LedCount LEDs total; if percent crosses a per-LED threshold, that
-        // LED lights up. Bottom LED (index 0 here) lights at the smallest
-        // percent, top LED (index LedCount-1) lights last.
+        // LED lights up. LED 1 (index 0) lights at the smallest percent,
+        // LED 14 / redline (index LedCount-1) lights last.
         for (int i = 0; i < LedCount; i++)
         {
             // Threshold for LED i to light: ((i + 1) / LedCount) * 100.
-            // The bottom LED (i=0) lights as soon as any RPM is above start.
+            // LED 1 (i=0) lights as soon as any RPM is above start.
             double threshold = (i + 0.001) * 100.0 / LedCount;
             bool lit = percent >= threshold;
-            // Render order: index 0 of the brush list maps to LED 1
-            // (bottom). The StackPanel renders top-first, so we put the
-            // highest-index brush at the FIRST collection position so it
-            // appears at the top of the strip.
-            int visualIndex = LedCount - 1 - i;
-            _ledBrushes[visualIndex] = lit ? LedColorAt(i) : DimLedBrush;
+            // Horizontal LED bar in the header renders left-to-right
+            // (UniformGrid Rows=1), so brush index = logical LED index —
+            // green LEDs on the left, blue middle, red redline on the right,
+            // matching how the wheel actually lights up.
+            _ledBrushes[i] = lit ? LedColorAt(i) : DimLedBrush;
         }
     }
 

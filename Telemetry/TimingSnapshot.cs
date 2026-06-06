@@ -47,6 +47,16 @@ namespace F1SimHubLive.Telemetry
         public string AheadCarNumber { get; set; } = "";
         public string LeaderCarNumber { get; set; } = "";
 
+        // Lap times for the car immediately ahead (INT) and the leader (LDR). These are the
+        // "actual lap time" of that other driver, not a gap. The wheel HUD displays them in
+        // the LDR/INT panel centers so the driver can compare pace against the leader and
+        // the car ahead at a glance, while the colored badge to the right of each panel
+        // shows the gap separately (so we don't duplicate gap info).
+        public string AheadLastLapTime { get; set; } = "";
+        public string AheadBestLapTime { get; set; } = "";
+        public string LeaderLastLapTime { get; set; } = "";
+        public string LeaderBestLapTime { get; set; } = "";
+
         public string AheadSector1Time { get; set; } = "";
         public string AheadSector2Time { get; set; } = "";
         public string AheadSector3Time { get; set; } = "";

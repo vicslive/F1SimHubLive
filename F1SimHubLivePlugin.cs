@@ -143,6 +143,10 @@ namespace F1SimHubLive
                 SetProp("AheadSector1Time", t.AheadSector1Time);
                 SetProp("AheadCarNumber", t.AheadCarNumber);
                 SetProp("LeaderCarNumber", t.LeaderCarNumber);
+                SetProp("AheadLastLapTime", t.AheadLastLapTime);
+                SetProp("AheadBestLapTime", t.AheadBestLapTime);
+                SetProp("LeaderLastLapTime", t.LeaderLastLapTime);
+                SetProp("LeaderBestLapTime", t.LeaderBestLapTime);
                 SetProp("AheadSector2Time", t.AheadSector2Time);
                 SetProp("AheadSector3Time", t.AheadSector3Time);
                 SetProp("AheadSector1IsPersonalBest", t.AheadSector1IsPersonalBest);

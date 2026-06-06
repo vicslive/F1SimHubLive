@@ -114,6 +114,10 @@ namespace F1SimHubLive.MultiViewer
 
         private static void FillAheadSectors(TimingSnapshot snap, JObject d)
         {
+            if (d["LastLapTime"] is JObject aheadLast)
+                snap.AheadLastLapTime = (string?)aheadLast["Value"] ?? "";
+            if (d["BestLapTime"] is JObject aheadBest)
+                snap.AheadBestLapTime = (string?)aheadBest["Value"] ?? "";
             if (d["Sectors"] is not JArray sectors) return;
             if (sectors.Count > 0 && sectors[0] is JObject s1)
             {
@@ -137,6 +141,10 @@ namespace F1SimHubLive.MultiViewer
 
         private static void FillLeaderSectors(TimingSnapshot snap, JObject d)
         {
+            if (d["LastLapTime"] is JObject leaderLast)
+                snap.LeaderLastLapTime = (string?)leaderLast["Value"] ?? "";
+            if (d["BestLapTime"] is JObject leaderBest)
+                snap.LeaderBestLapTime = (string?)leaderBest["Value"] ?? "";
             if (d["Sectors"] is not JArray sectors) return;
             if (sectors.Count > 0 && sectors[0] is JObject s1)
             {

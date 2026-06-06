@@ -91,12 +91,20 @@ public sealed class LiveTimingClient : IDisposable
                     _lastDriverListFetch = DateTime.UtcNow;
                 }
 
-                // The hot loop: timing + tire data.
+                // The hot loop: timing + tire data + stats.
+                // TimingStats is the authoritative source for personal best
+                // lap times and best sector times — TimingData only flags
+                // PersonalFastest / OverallFastest on the lap they were set,
+                // so we'd lose the purple/yellow colours on later ticks
+                // (and we'd miss any history from before we connected).
+                // Wrap stats in a fault-tolerant fetch so older MV builds
+                // that don't expose the endpoint don't break the whole loop.
                 var timingTask = _http.GetStringAsync($"{_baseUrl}/api/v1/live-timing/TimingData", ct);
                 var appTask = _http.GetStringAsync($"{_baseUrl}/api/v1/live-timing/TimingAppData", ct);
-                await Task.WhenAll(timingTask, appTask).ConfigureAwait(false);
+                var statsTask = SafeGetAsync($"{_baseUrl}/api/v1/live-timing/TimingStats", ct);
+                await Task.WhenAll(timingTask, appTask, statsTask).ConfigureAwait(false);
 
-                var snapshot = BuildSnapshot(timingTask.Result, appTask.Result);
+                var snapshot = BuildSnapshot(timingTask.Result, appTask.Result, statsTask.Result);
                 consecutiveFailures = 0;
 
                 _ = _dispatcher.BeginInvoke(new Action(() => ApplySnapshot(snapshot)));
@@ -114,6 +122,27 @@ public sealed class LiveTimingClient : IDisposable
 
             try { await Task.Delay(PollIntervalMs, ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { break; }
+        }
+    }
+
+    /// <summary>
+    /// Fault-tolerant variant of HttpClient.GetStringAsync — returns an
+    /// empty string on any non-cancellation failure so optional endpoints
+    /// (e.g. TimingStats) don't poison Task.WhenAll for the whole loop.
+    /// </summary>
+    private async Task<string> SafeGetAsync(string url, CancellationToken ct)
+    {
+        try
+        {
+            return await _http.GetStringAsync(url, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch
+        {
+            return string.Empty;
         }
     }
 
@@ -141,7 +170,7 @@ public sealed class LiveTimingClient : IDisposable
         return dict;
     }
 
-    private List<RowSnapshot> BuildSnapshot(string timingJson, string appJson)
+    private List<RowSnapshot> BuildSnapshot(string timingJson, string appJson, string statsJson)
     {
         var snaps = new List<RowSnapshot>();
 
@@ -149,6 +178,18 @@ public sealed class LiveTimingClient : IDisposable
         if (timingRoot == null) return snaps;
 
         var appLines = JsonNode.Parse(appJson)?["Lines"]?.AsObject();
+
+        // TimingStats is optional — older MV builds or certain session
+        // types may not expose it. When present it gives us authoritative
+        // PersonalBestLapTime + BestSectors with Position rankings, so we
+        // know exactly who has the session-best (Position == 1, purple)
+        // without having to compute the field min ourselves.
+        JsonObject? statsLines = null;
+        if (!string.IsNullOrEmpty(statsJson))
+        {
+            try { statsLines = JsonNode.Parse(statsJson)?["Lines"]?.AsObject(); }
+            catch { /* malformed payload — fall through to running-min logic */ }
+        }
 
         foreach (var kv in timingRoot)
         {
@@ -170,11 +211,59 @@ public sealed class LiveTimingClient : IDisposable
             string bestLap = line["BestLapTime"]?["Value"]?.GetValue<string>() ?? "";
             LapStatus bestStatus = LapFlag(line["BestLapTime"]);
 
+            // Cross-reference TimingStats for the authoritative best-lap
+            // ranking — MV only sets OverallFastest on the lap that set the
+            // time, so the colour goes back to grey on later snapshots.
+            // PersonalBestLapTime.Position == 1 means session best (purple);
+            // any non-zero position implies it is at minimum a PB (yellow).
+            JsonObject? statsLine = null;
+            if (statsLines != null
+                && statsLines.TryGetPropertyValue(racingNumber, out var statsNode)
+                && statsNode is JsonObject so)
+            {
+                statsLine = so;
+            }
+            if (statsLine != null)
+            {
+                var pblt = statsLine["PersonalBestLapTime"]?.AsObject();
+                if (pblt != null)
+                {
+                    var pbVal = pblt["Value"]?.GetValue<string>();
+                    if (!string.IsNullOrEmpty(pbVal)) bestLap = pbVal;
+                    int pbPos = 0;
+                    try { pbPos = pblt["Position"]?.GetValue<int>() ?? 0; } catch { }
+                    bestStatus = pbPos == 1 ? LapStatus.SessionBest
+                               : pbPos > 1 ? LapStatus.PersonalBest
+                               : bestStatus;
+                }
+            }
+
             string gapToLeader = line["TimeDiffToFastest"]?.GetValue<string>() ?? "";
             string interval = line["TimeDiffToPositionAhead"]?.GetValue<string>() ?? "";
 
             bool inPit = line["InPit"]?.GetValue<bool>() ?? false;
             bool retired = line["Retired"]?.GetValue<bool>() ?? false;
+
+            // TimingStats.BestSectors[] gives us authoritative PB times +
+            // their session ranking. We snapshot them here so we can seed
+            // _bestSector* with real history (handles connecting mid-session)
+            // and use Position == 1 as the source of truth for purple.
+            string?[] statsBestSectorStr = new string?[3];
+            int[] statsBestSectorPos = new int[3];
+            if (statsLine != null)
+            {
+                var bs = statsLine["BestSectors"]?.AsArray();
+                if (bs != null)
+                {
+                    for (int i = 0; i < 3 && i < bs.Count; i++)
+                    {
+                        var b = bs[i]?.AsObject();
+                        if (b == null) continue;
+                        statsBestSectorStr[i] = b["Value"]?.GetValue<string>();
+                        try { statsBestSectorPos[i] = b["Position"]?.GetValue<int>() ?? 0; } catch { }
+                    }
+                }
+            }
 
             // Sectors: 3 entries, each with Segments[]
             var sectorData = new SectorSnapshot[3];
@@ -196,25 +285,41 @@ public sealed class LiveTimingClient : IDisposable
                     }
                     string timeStr = s["Value"]?.GetValue<string>() ?? s["PreviousValue"]?.GetValue<string>() ?? "";
 
-                    // Track this driver's PB for the sector. We compare
-                    // against the running min because MV only stamps
-                    // PersonalFastest on the lap that sets it.
+                    // Maintain a per-(driver, sector) running min. We seed
+                    // it from TimingStats.BestSectors when available so
+                    // joining mid-session still shows correct PBs; we also
+                    // keep updating it with live sector values so a freshly
+                    // set PB shows immediately, even before TimingStats
+                    // catches up on the next tick.
+                    if (!_bestSectorSeconds.TryGetValue(racingNumber, out var bestSecs))
+                    {
+                        bestSecs = new[] { double.MaxValue, double.MaxValue, double.MaxValue };
+                        _bestSectorSeconds[racingNumber] = bestSecs;
+                        _bestSectorStrings[racingNumber] = new[] { "", "", "" };
+                    }
+                    var bestStrs = _bestSectorStrings[racingNumber];
+
+                    // Seed from TimingStats first (authoritative history).
+                    var statsStr = statsBestSectorStr[i];
+                    if (!string.IsNullOrEmpty(statsStr)
+                        && double.TryParse(statsStr, System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture, out double statsSecs)
+                        && statsSecs > 0
+                        && statsSecs < bestSecs[i])
+                    {
+                        bestSecs[i] = statsSecs;
+                        bestStrs[i] = statsStr;
+                    }
+
+                    // Then fold in the live sector value if it's a new PB.
                     if (!string.IsNullOrEmpty(timeStr)
                         && double.TryParse(timeStr, System.Globalization.NumberStyles.Float,
                             System.Globalization.CultureInfo.InvariantCulture, out double sectorSecs)
-                        && sectorSecs > 0)
+                        && sectorSecs > 0
+                        && sectorSecs < bestSecs[i])
                     {
-                        if (!_bestSectorSeconds.TryGetValue(racingNumber, out var bestSecs))
-                        {
-                            bestSecs = new[] { double.MaxValue, double.MaxValue, double.MaxValue };
-                            _bestSectorSeconds[racingNumber] = bestSecs;
-                            _bestSectorStrings[racingNumber] = new[] { "", "", "" };
-                        }
-                        if (sectorSecs < bestSecs[i])
-                        {
-                            bestSecs[i] = sectorSecs;
-                            _bestSectorStrings[racingNumber][i] = timeStr;
-                        }
+                        bestSecs[i] = sectorSecs;
+                        bestStrs[i] = timeStr;
                     }
 
                     sectorData[i] = new SectorSnapshot(

@@ -277,7 +277,7 @@
                                     <ColumnDefinition Width="78" />
                                     <!-- LAST + BEST lap times -->
                                     <ColumnDefinition Width="95" />
-                                    <!-- INT + GAP -->
+                                    <!-- INT + LDR -->
                                     <ColumnDefinition Width="80" />
                                     <!-- Tire badge + age -->
                                     <ColumnDefinition Width="58" />
@@ -378,7 +378,8 @@
                                     </Grid>
                                 </StackPanel>
 
-                                <!-- INT + GAP stack -->
+                                <!-- INT + LDR stack (matches MultiViewer terminology:
+                                     INT = interval to car ahead, LDR = gap to leader) -->
                                 <StackPanel Grid.Column="5" VerticalAlignment="Center"
                                             Margin="0,0,4,0">
                                     <Grid>
@@ -402,7 +403,7 @@
                                             <ColumnDefinition Width="24" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
-                                        <TextBlock Text="GAP"
+                                        <TextBlock Text="LDR"
                                                    FontSize="9" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
                                                    VerticalAlignment="Center" />

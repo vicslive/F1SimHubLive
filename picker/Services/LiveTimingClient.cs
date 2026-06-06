@@ -238,8 +238,14 @@ public sealed class LiveTimingClient : IDisposable
                 }
             }
 
-            string gapToLeader = line["TimeDiffToFastest"]?.GetValue<string>() ?? "";
-            string interval = line["TimeDiffToPositionAhead"]?.GetValue<string>() ?? "";
+            // MV's TimingData exposes GapToLeader as a top-level string ("+9.322",
+            // "1 L" for lapped cars, "" for leader) and IntervalToPositionAhead as
+            // a nested object whose .Value is the gap to the car immediately ahead.
+            // Older drafts of this client used TimeDiffToFastest / TimeDiffToPositionAhead,
+            // which are signalr-internal names — they don't exist on the public payload,
+            // so both fields silently returned "" and the INT / LDR columns were blank.
+            string gapToLeader = line["GapToLeader"]?.GetValue<string>() ?? "";
+            string interval = line["IntervalToPositionAhead"]?["Value"]?.GetValue<string>() ?? "";
 
             bool inPit = line["InPit"]?.GetValue<bool>() ?? false;
             bool retired = line["Retired"]?.GetValue<bool>() ?? false;

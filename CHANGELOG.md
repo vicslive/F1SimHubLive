@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+### CI / build
+- Bumped release-workflow action pins to their Node 24-native majors ahead of GitHub's 2026-06-16 deprecation of Node 20 actions: ``actions/checkout`` v4→v5, ``actions/setup-dotnet`` v4→v5, ``azure/login`` v2→v3, ``softprops/action-gh-release`` v2→v3. All four v3/v5 releases are pure runtime swaps with no public-API breakage for our usage (federated identity, ``allow-no-subscriptions``, ``files:`` glob, ``body_path``, etc. all still work). ``windows-latest`` runner image also redirects to ``windows-2025-vs2026`` on 2026-06-15 — no workflow change needed for that, but documenting here in case a future tag-build regresses unexpectedly.
+
 ## [1.3.2] — 2026-06-06
 
 ### Fixed

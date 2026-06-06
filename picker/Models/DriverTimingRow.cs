@@ -13,13 +13,40 @@ public sealed class DriverTimingRow : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    // ---- identity (set once at row creation, treated as stable) ----
+    // ---- identity (RacingNumber is stable; Tla/LastName/TeamName/TeamColour
+    //      are mutable because MV can change them mid-session — most commonly
+    //      when the user switches from one VOD replay to another, or when a
+    //      reserve driver subs in). ----
     public string RacingNumber { get; init; } = "";
-    public string Tla { get; init; } = "";
-    public string LastName { get; init; } = "";
-    public string TeamName { get; init; } = "";
+
+    private string _tla = "";
+    public string Tla
+    {
+        get => _tla;
+        set => SetField(ref _tla, value);
+    }
+
+    private string _lastName = "";
+    public string LastName
+    {
+        get => _lastName;
+        set => SetField(ref _lastName, value);
+    }
+
+    private string _teamName = "";
+    public string TeamName
+    {
+        get => _teamName;
+        set => SetField(ref _teamName, value);
+    }
+
+    private string _teamColour = "";
     /// <summary>Hex without leading '#', e.g. "F47600".</summary>
-    public string TeamColour { get; init; } = "";
+    public string TeamColour
+    {
+        get => _teamColour;
+        set => SetField(ref _teamColour, value);
+    }
 
     // ---- mutable state below: changes every 500ms ----
 

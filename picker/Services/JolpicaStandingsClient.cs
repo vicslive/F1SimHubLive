@@ -43,7 +43,7 @@ internal sealed class JolpicaStandingsClient
         // Public API; identify ourselves so the operators can correlate traffic
         // if they need to. Falls back silently to no user-agent on any header
         // rejection (some intermediates reject the empty product version).
-        try { _http.DefaultRequestHeaders.UserAgent.ParseAdd("F1SimHubLive-Picker/1.3.0 (+github.com/vicslive/F1SimHubLive)"); }
+        try { _http.DefaultRequestHeaders.UserAgent.ParseAdd("F1SimHubLive-Picker/1.3.1 (+github.com/vicslive/F1SimHubLive)"); }
         catch { }
     }
 

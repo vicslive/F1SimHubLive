@@ -481,6 +481,18 @@ public sealed class LiveTimingClient : IDisposable
                 };
                 Rows.Add(row);
             }
+            else
+            {
+                // Refresh identity fields — MV swaps these wholesale when the
+                // user switches between live and VOD sessions (e.g. a 2020 race
+                // replay reports Hamilton at Mercedes #00D2BE, not at his
+                // current 2026 team). Without this the rows stay frozen on
+                // whatever team info was current at row creation.
+                if (row.Tla != s.Info.Tla) row.Tla = s.Info.Tla;
+                if (row.LastName != s.Info.LastName) row.LastName = s.Info.LastName;
+                if (row.TeamName != s.Info.TeamName) row.TeamName = s.Info.TeamName;
+                if (row.TeamColour != s.Info.TeamColour) row.TeamColour = s.Info.TeamColour;
+            }
 
             row.Position = s.Position;
             row.LastLapTime = s.LastLapTime;

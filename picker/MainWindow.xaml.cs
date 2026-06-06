@@ -62,10 +62,14 @@ public partial class MainWindow : Window
         DarkTitleBar.Enable(this);
 
         // Restore window position / size / maximized state from the previous
-        // session before the window is shown. Silently falls through to the
-        // XAML defaults if the geometry file is missing, malformed, or would
-        // place the window off-screen (e.g. monitor was unplugged).
+        // session before the window is shown, and wire up continuous save on
+        // move/resize/state-change/close. We do this in two steps because
+        // some close paths (SimHub shutting down a child picker, Task
+        // Manager kill, crashes in other Closed handlers) never reach a
+        // save-on-Closed callback — the continuous (debounced) save in
+        // Attach guarantees the latest geometry is always on disk.
         WindowGeometryStore.Apply(this);
+        WindowGeometryStore.Attach(this);
 
         var (settingsPath, mvUrl) = ParseArgs(Environment.GetCommandLineArgs());
         _settingsPath = settingsPath ?? DefaultSettingsPath();
@@ -181,9 +185,6 @@ public partial class MainWindow : Window
 
         Closed += (_, _) =>
         {
-            // Persist window placement first so a tear-down exception in one
-            // of the disposables below doesn't lose the user's geometry.
-            WindowGeometryStore.Save(this);
             _liveTimingClient.Dispose();
             _sliderWriteTimer.Stop();
             _settingsWatcher?.Dispose();

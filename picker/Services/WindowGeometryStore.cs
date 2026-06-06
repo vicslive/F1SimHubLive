@@ -3,6 +3,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows;
+using System.Windows.Threading;
 
 namespace F1SimHubLive.Picker.Services;
 
@@ -20,6 +21,14 @@ namespace F1SimHubLive.Picker.Services;
 /// have zero meaning to the plugin — dumping them into the shared settings
 /// file would trigger pointless plugin reloads. Keeping them in their own
 /// file means resizing the picker window never wakes the plugin up.
+///
+/// <para>Why we save continuously (not just on close):</para>
+/// Originally we only saved in <see cref="Window.Closed"/>. That fails in
+/// several real-world close paths: SimHub terminating the child picker on
+/// shutdown, Task Manager kill, a crash in another handler running before
+/// ours. With continuous (throttled) save, the latest geometry is always
+/// on disk after a ~500 ms quiet period — even an abrupt termination loses
+/// at most the last half-second of movement, which is invisible to the user.
 ///
 /// <para>Multi-monitor safety:</para>
 /// On <see cref="Apply"/>, we sanity-check that the saved rect overlaps the
@@ -41,6 +50,7 @@ internal static class WindowGeometryStore
     private const string GeometryFileName = "F1SimHubLive.PickerWindow.json";
     private const double MinVisiblePixels = 120;
     private const double MinVisiblePixelsTall = 80;
+    private static readonly TimeSpan SaveDebounce = TimeSpan.FromMilliseconds(500);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -95,18 +105,71 @@ internal static class WindowGeometryStore
     }
 
     /// <summary>
-    /// Capture the current window placement and persist it. Should be called
-    /// from <see cref="Window.Closing"/> or <c>Closed</c> before the window
-    /// is disposed. Uses <see cref="Window.RestoreBounds"/> so a maximized
-    /// window saves its underlying normal rect, not the monitor working area.
+    /// Wire up continuous, debounced geometry persistence. Subscribes to
+    /// <see cref="Window.LocationChanged"/>, <see cref="FrameworkElement.SizeChanged"/>,
+    /// <see cref="Window.StateChanged"/>, and <see cref="Window.Closing"/>.
+    /// Every event schedules a save 500 ms in the future; if more events
+    /// arrive in that window, the timer resets — so a continuous drag
+    /// becomes a single write at the end of the gesture.
+    /// </summary>
+    public static void Attach(Window window)
+    {
+        DispatcherTimer? timer = null;
+
+        void ScheduleSave()
+        {
+            if (timer == null)
+            {
+                timer = new DispatcherTimer(DispatcherPriority.Background, window.Dispatcher)
+                {
+                    Interval = SaveDebounce
+                };
+                timer.Tick += (_, _) =>
+                {
+                    timer!.Stop();
+                    Save(window);
+                };
+            }
+            timer.Stop();
+            timer.Start();
+        }
+
+        window.LocationChanged += (_, _) => ScheduleSave();
+        window.SizeChanged += (_, _) => ScheduleSave();
+        window.StateChanged += (_, _) => ScheduleSave();
+
+        // Closing fires before Closed and before any disposables in user
+        // handlers run, so it's the most reliable point to flush. We bypass
+        // the timer here and write synchronously to guarantee the file lands
+        // before the process exits.
+        window.Closing += (_, _) =>
+        {
+            timer?.Stop();
+            Save(window);
+        };
+    }
+
+    /// <summary>
+    /// Capture the current window placement and persist it. Uses
+    /// <see cref="Window.RestoreBounds"/> when valid (so a maximized window
+    /// saves its underlying normal rect, not the monitor working area).
     /// </summary>
     public static void Save(Window window)
     {
         try
         {
-            // RestoreBounds is the "normal" rect regardless of current state.
-            // For a never-maximized window it equals Left/Top/Width/Height.
+            // Prefer RestoreBounds (the "normal" rect regardless of state).
+            // It can be Rect.Empty before the window has ever been shown —
+            // in that case Empty.Left is +Infinity, so we fall back to the
+            // current Left/Top/Width/Height which are always valid post-show.
             var bounds = window.RestoreBounds;
+            if (bounds.IsEmpty
+                || double.IsNaN(bounds.Left) || double.IsInfinity(bounds.Left)
+                || bounds.Width < 1 || bounds.Height < 1)
+            {
+                bounds = new Rect(window.Left, window.Top, window.ActualWidth, window.ActualHeight);
+            }
+
             if (double.IsNaN(bounds.Left) || double.IsInfinity(bounds.Left)) return;
             if (bounds.Width < 1 || bounds.Height < 1) return;
 

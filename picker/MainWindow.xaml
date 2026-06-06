@@ -118,8 +118,7 @@
                             TickFrequency="500" IsSnapToTickEnabled="True"
                             SmallChange="100" LargeChange="500"
                             VerticalAlignment="Center"
-                            Margin="6,0"
-                            ValueChanged="StartRpmSlider_ValueChanged" />
+                            Margin="6,0" />
                     <TextBlock Grid.Column="2" x:Name="StartRpmText"
                                Text="—"
                                FontSize="11" FontWeight="SemiBold"
@@ -141,8 +140,7 @@
                             TickFrequency="500" IsSnapToTickEnabled="True"
                             SmallChange="100" LargeChange="500"
                             VerticalAlignment="Center"
-                            Margin="6,0"
-                            ValueChanged="EndRpmSlider_ValueChanged" />
+                            Margin="6,0" />
                     <TextBlock Grid.Column="2" x:Name="EndRpmText"
                                Text="—"
                                FontSize="11" FontWeight="SemiBold"

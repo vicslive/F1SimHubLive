@@ -82,6 +82,14 @@ public partial class MainWindow : Window
         LoadSliderRangeFromSettings();
         ApplyLedsForRpm(_lastRpm); // paints the strip dim at startup
 
+        // Wire slider handlers in code-behind (not XAML) because Slider.ValueChanged
+        // fires during InitializeComponent when Minimum/Maximum get set, and at that
+        // point the fields the handler touches (_sliderWriteTimer, RangeSummary, etc.)
+        // may not exist yet. Attaching after LoadSliderRangeFromSettings guarantees
+        // a fully-initialized state.
+        StartRpmSlider.ValueChanged += StartRpmSlider_ValueChanged;
+        EndRpmSlider.ValueChanged += EndRpmSlider_ValueChanged;
+
         // Telemetry wiring: every CarData frame for the active driver becomes
         // a brush refresh + RPM readout. Marshalled to the UI thread because
         // the HTTP loop runs on a worker.

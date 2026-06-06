@@ -68,7 +68,7 @@ The scrollbar is dark-themed to match.
 
 <!-- Screenshot: docs/screenshots/picker-row-anatomy.png — close-up of a single row with column callouts (pos, TLA, name/team, speed, last/best, int/gap, tyre, pit, sectors) -->
 
-![Single driver row anatomy — Leclerc P2 in Ferrari red: position number, team-coloured TLA tile, name and team, current speed (62 km/h), LAST and BEST lap times (BEST in purple = session best), INT and GAP to leader, Medium tyre badge with L16 stint age, pit count (2), and the three-sector strip showing mini-bar segments, current sector times, and personal-best sector times (S2 best in purple = session-best sector)](docs/screenshots/picker-row-anatomy.png)
+![Single driver row anatomy — Leclerc P2 in Ferrari red: position number, team-coloured TLA tile, name and team, current speed (62 km/h), LAST and BEST lap times (BEST in purple = session best), INT (gap to car ahead) and LDR (gap to leader), Medium tyre badge with L16 stint age, pit count (2), and the three-sector strip showing mini-bar segments, current sector times, and personal-best sector times (S2 best in purple = session-best sector)](docs/screenshots/picker-row-anatomy.png)
 
 ```
 ┌──┬────┬───────────────────┬──────┬───────────────┬───────────────┬──────┬───┬──────────────────┐
@@ -81,7 +81,7 @@ The scrollbar is dark-themed to match.
 │  │    │                   │      │               │               │     │   │ 19.641 35.375 20.094│
 └──┴────┴───────────────────┴──────┴───────────────┴───────────────┴──────┴───┴──────────────────┘
    ↑    ↑                  ↑      ↑              ↑               ↑     ↑    ↑
-   pos  TLA  name/team    speed  LAST/BEST    INT/GAP          tyre   pit  sectors (3 cols × 3 rows)
+   pos  TLA  name/team    speed  LAST/BEST    INT/LDR          tyre   pit  sectors (3 cols × 3 rows)
 ```
 
 ### Columns, left to right
@@ -93,7 +93,7 @@ The scrollbar is dark-themed to match.
 | 2 | **Name + team** | flexible | Last name in bold + team name in subtler grey under it. | `DriverList.LastName` + `TeamName` |
 | 3 | **Speed** | 78 px | Current car speed in km/h, big bold Consolas number with a tiny `km/h` under it. Updates ~5×/sec for **every car** (not just the selected one). `0` when telemetry is paused / driver in pit. | MV `CarData` channel `2` for that car's racing number |
 | 4 | **LAST + BEST lap** | 95 px | Two-row stack. `LAST` row shows the most recent completed lap (or `IN PIT` when the driver is in the pit lane). `BEST` row shows the personal best lap of the session. Colour-coded — see [Time colour scheme](#time-colour-scheme) below. | `TimingData.Lines[*].LastLapTime` + `TimingStats.Lines[*].PersonalBestLapTime` |
-| 5 | **INT + GAP** | 80 px | Two-row stack. `INT` = gap to the car directly ahead. `LDR` = gap to the race leader (`—` for P1, who *is* the leader). Negative values render as `+x.xxx`. | `TimingData.Lines[*].TimeDiffToPositionAhead` + `TimeDiffToFastest` |
+| 5 | **INT + LDR** | 80 px | Two-row stack. `INT` = gap to the car directly ahead. `LDR` = gap to the race leader (blank for P1, who *is* the leader; `1 L` for lapped cars). Both rendered with leading sign (`+x.xxx`). Column was labelled `GAP` and rendered empty in v1.2.0 – v1.3.1; v1.3.2 fixed both. | `TimingData.Lines[*].IntervalToPositionAhead.Value` + `GapToLeader` |
 | 6 | **Tyre badge** | 58 px | Coloured circle with a single letter (S/M/H/I/W) representing the current compound, and the lap number of the stint (`L18` = 18 laps on this set) under it. See [Tyre colour scheme](#tyre-colour-scheme). | `TimingAppData.Lines[*].Stints[<last>]` |
 | 7 | **Pit count** | 34 px | Number of pit stops completed. Hidden when zero. | `TimingData.NumberOfPitStops` (falls back to `Stints.Count - 1`) |
 | 8 | **Sector strip** | 200 px | Three sectors side-by-side. Each sector has **three rows** (top = segment mini-bars, middle = current lap's sector time, bottom = personal-best sector time). See [Sector strip](#sector-strip) below. | `TimingData.Lines[*].Sectors[]` + `TimingStats.Lines[*].BestSectors[]` |
@@ -260,6 +260,8 @@ The picker doesn't have its own settings file. Behaviour is controlled by two fi
 | **v1.2.3** | Per-driver speed column (km/h) added. Sector strip restructured to three rows (segments / current / best). Row height 64 → 72; window 760 → 860 wide. |
 | **v1.2.4** | `TimingStats` endpoint wired up — PB / SB colours on lap and sector times now match MV exactly, even when joining mid-session. |
 | **v1.3.0** | Picker manifest changed from `requireAdministrator` to `asInvoker` — **no UAC prompt on launch, ever.** Settings file moved from `C:\Program Files (x86)\SimHub\F1SimHubLive.Settings.json` to `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json`; automatic one-shot migration from the legacy path on first run. `AutoLaunchPicker = true` is now fully unattended. |
+| **v1.3.1** | Picker now refreshes driver team info (TLA, last name, team name, team colour) when MultiViewer switches sessions while the picker is running. Previously those four fields on `DriverTimingRow` were declared `{ get; init; }` (C# init-only), so once a row was created the team paint was locked in — most visible when loading a historical-season replay in MV after the picker was already open: drivers who exist in both eras (Hamilton, Verstappen) kept their first-poll team while era-unique drivers (Räikkönen, Bortoleto) painted correctly. Converted those four fields to mutable INPC properties with a refresh pass in the row-exists branch of `ApplySnapshot`. |
+| **v1.3.2** | Picker `INT` and `LDR` columns now show real values. The poll loop was reading `line["TimeDiffToFastest"]` and `line["TimeDiffToPositionAhead"]` — those names don't exist on MultiViewer's public `/api/v1/live-timing/TimingData` payload (they're signalr-internal). Both reads returned `null` → empty strings → the columns rendered as bare labels. Fixed to use the actual payload: `GapToLeader` (top-level string) and `IntervalToPositionAhead.Value` (nested object). Also renamed the second column from `GAP` to `LDR` to match MultiViewer's terminology. |
 
 ---
 

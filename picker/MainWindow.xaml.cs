@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private readonly string _settingsPath;
     private readonly string _mvUrl;
     private readonly LiveTimingClient _liveTimingClient;
+    private readonly SessionInfoClient _sessionInfoClient;
     private readonly FileSystemWatcher? _settingsWatcher;
     private readonly object _watcherLock = new();
     private DateTime _lastWatcherFire = DateTime.MinValue;
@@ -81,6 +82,8 @@ public partial class MainWindow : Window
         _settingsPath = settingsPath ?? DefaultSettingsPath();
         _mvUrl = mvUrl ?? DefaultMvUrl;
         _liveTimingClient = new LiveTimingClient(Dispatcher, _mvUrl);
+        _sessionInfoClient = new SessionInfoClient(Dispatcher, _mvUrl);
+        SessionHeaderBar.DataContext = _sessionInfoClient.Model;
         _telemetry = new PickerTelemetryClient(_mvUrl);
 
         SettingsPathText.Text = _settingsPath;
@@ -185,6 +188,7 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             _liveTimingClient.Start();
+            _sessionInfoClient.Start();
             _ = CheckForUpdateAsync(); // fire-and-forget; UI updates if newer
             await Task.CompletedTask;
         };
@@ -192,6 +196,7 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _liveTimingClient.Dispose();
+            _sessionInfoClient.Dispose();
             _sliderWriteTimer.Stop();
             _settingsWatcher?.Dispose();
             _telemetry.Dispose();

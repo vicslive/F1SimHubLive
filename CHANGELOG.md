@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.3.9] — 2026-06-06
+
+### Added
+- **Session header bar above the picker driver list** — mirrors MultiViewer's top banner so the picker can sit side-by-side with MV and read like one app. Shows: country flag (PNG, real image — not Segoe UI Emoji which renders as literal "CA" letters on most Windows builds), race name + session type ("Canadian GP: Race"), live race countdown clock, lap counter ("Lap 21/68 (47 left)" — race only), and a track-status pill (Track Clear / Yellow Flag / Safety Car / Virtual SC / Red Flag) coloured to match MV.
+  - 31 F1 country flag PNGs bundled under `picker/Assets/Flags/{iso2}.png` (~11 KB total), loaded as WPF Resources via pack URI, frozen on first load for cross-thread reuse.
+  - Race countdown derives from `SessionInfo.EndDate` (with `GmtOffset` → UTC) minus MV's `Heartbeat.Utc` (replay-aware simulated time). MV's `ExtrapolatedClock.Remaining` sticks at `01:59:59` for the entire race — it's only useful for Practice / Qualifying countdowns, where this build still uses it.
+  - 1 Hz parallel HTTP poll of `SessionInfo` + `TrackStatus` + `LapCount` + `ExtrapolatedClock` + `Heartbeat`. UI tick at 4 Hz extrapolates the clock between polls so seconds visibly count down.
+
+### Changed
+- **Picker driver position block restyled as a two-tone tile** matching MV's `[number][TLA]` layout: dark-grey rounded square holding the position number, then a 1 px seam, then the team-colour TLA tile. Replaces the single-tile design from v1.3.4. No behavioural change — purely visual to align with MV when the two apps are docked side-by-side.
+
 ## [1.3.8.1] — 2026-06-06
 
 ### Fixed

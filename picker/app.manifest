@@ -5,11 +5,14 @@
     <security>
       <requestedPrivileges xmlns="urn:schemas-microsoft-com:asm.v3">
         <!--
-          The default SimHub install lives in Program Files (x86), which writes
-          require elevation. Requesting admin once at launch is preferable to
-          a partial / silent-failure write of the settings file mid-race.
+          v1.3.0+: F1SimHubLive.Settings.json lives under %APPDATA%\F1SimHubLive\
+          (per-user, no elevation required). Running as asInvoker means no UAC
+          prompt — ever — and AutoLaunchPicker can now run on every SimHub
+          startup without nagging the user. The plugin uses the same per-user
+          path. See picker/Services/SettingsPathResolver.cs for the resolution
+          and migration rules.
         -->
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
       </requestedPrivileges>
     </security>
   </trustInfo>

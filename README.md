@@ -475,11 +475,10 @@ C:\Program Files (x86)\SimHub\F1SimHubLive-Picker.exe
 ```
 
 If you want the picker to launch automatically when SimHub starts, set
-`AutoLaunchPicker` to `true` in `settings.json`. **Off by default** because the
-picker needs to write to `Program Files (x86)\SimHub\settings.json`, which
-requires admin — so it ships with a `requireAdministrator` manifest, and
-auto-launching it from SimHub will trigger a UAC prompt every time SimHub
-starts. Most people prefer the Start Menu shortcut.
+`AutoLaunchPicker` to `true` in `settings.json`. As of v1.3.0 the picker runs
+as `asInvoker` (no UAC prompt) and reads/writes its config under
+`%APPDATA%\F1SimHubLive\`, so auto-launch is fully unattended — no UAC
+whatsoever when SimHub starts.
 
 ### Local-only deploy (during development)
 
@@ -599,7 +598,7 @@ powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1 -StartSimHub   # dep
 | `MultiViewerBaseUrl` | `http://localhost:10101` | F1 MultiViewer HTTP API root. Only used when `Source=MultiViewer`. |
 | `MultiViewerPollMs` | `250` | Car-data polling interval against MultiViewer (4 Hz default). |
 | `MultiViewerTimingPollMs` | `1000` | Timing/session/weather polling interval against MultiViewer (1 Hz default). |
-| `AutoLaunchPicker` | `false` | When `true`, plugin spawns the [Driver Picker](#driver-picker-mid-race-driver-switching) every time SimHub starts. Off by default because the picker is admin-manifested and triggers a UAC prompt on each launch. Start Menu shortcut is the recommended manual-launch path. |
+| `AutoLaunchPicker` | `false` | When `true`, plugin spawns the [Driver Picker](#driver-picker-mid-race-driver-switching--live-timing) every time SimHub starts. As of v1.3.0 this is fully unattended — the picker runs as `asInvoker` (no UAC) and writes config under `%APPDATA%\F1SimHubLive\`. Safe to leave on permanently. |
 
 Hot-reloadable keys: **`DriverNumber` only.** All other keys still require a SimHub restart — changing URLs or polling intervals mid-session would require tearing down and re-establishing the client connection, and was intentionally left out of scope.
 
@@ -664,11 +663,11 @@ foreach ($p in 'Status','Rpm','Gear','Speed','Position','LapDisplay','TrackStatu
 - The championship sort needs `/api/v1/live-timing/ChampionshipPrediction`, which MultiViewer only populates during/after race sessions. During qualifying-only replays, or for a season-opening race weekend, this endpoint returns 404 and the picker falls back to race-number order. Not a bug — confirmation that the fallback is working.
 
 **Picker click doesn't flip the wheel / shows green flash but plugin doesn't react:**
-- Confirm `F1SimHubLive.Settings.json` actually changed (open it; check the new `DriverNumber` value). If the file didn't change, the picker hit a permission error — re-run it as admin (or use the Start Menu shortcut, which inherits the picker's `requireAdministrator` manifest).
-- If the file DID change but the plugin didn't react, check SimHub's plugin log for `[F1SimHubLivePlugin]` — the hot-reload writes a line like `Driver changed: 44 → 12`. No line = `FileSystemWatcher` didn't fire (rare, usually a path mismatch — verify the plugin and picker both point at the same `settings.json` under `C:\Program Files (x86)\SimHub\`).
+- Confirm `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json` actually changed (open it; check the new `DriverNumber` value). If the file didn't change, the picker hit a permission error — check for antivirus / Controlled Folder Access blocking writes to your AppData folder.
+- If the file DID change but the plugin didn't react, check SimHub's plugin log for `[F1SimHubLive]` — the hot-reload writes a line like `Driver changed: 44 → 12`. No line = `FileSystemWatcher` didn't fire (rare, usually a path mismatch — both plugin and picker resolve via `SettingsPathResolver` to `%APPDATA%\F1SimHubLive\` so this should not happen).
 
-**Picker UAC prompt is annoying — can I turn it off?**
-- Not without recompiling the picker without the `requireAdministrator` manifest. The manifest is required because the picker writes to `settings.json` inside `Program Files (x86)\SimHub\`, which is admin-only. The cleanest "no UAC every launch" path is to leave `AutoLaunchPicker = false` (default) and accept one UAC per picker launch.
+**Picker reads stale settings after upgrading from v1.2.x:**
+- v1.3.0 migrates `F1SimHubLive.Settings.json` from `C:\Program Files (x86)\SimHub\` to `%APPDATA%\F1SimHubLive\` on first run. The migration is automatic and one-shot — your existing customizations (driver number, RPM shift range, MV URL, etc.) are preserved. The legacy file is left in place but never read again; you can delete it manually if you want a clean uninstall, but it's harmless to leave.
 
 ---
 
@@ -680,6 +679,7 @@ foreach ($p in 'Status','Rpm','Gear','Speed','Position','LapDisplay','TrackStatu
 ├── Settings.cs                     # JSON settings model
 ├── F1SimHubLive.csproj              # .NET 4.8 class library
 ├── F1SimHubLive.Settings.example.json
+├── SettingsPathResolver.cs         # Resolves %APPDATA%\F1SimHubLive\ + migrates legacy (plugin copy)
 ├── README.md                       # this file
 ├── F1Signalr/
 │   ├── F1SignalRClient.cs          # Live SignalR client (livetiming.formula1.com)
@@ -716,7 +716,7 @@ installer/                          # WPF installer wizard (.NET 8)
                                     # (picker exe is also embedded at build time)
 
 picker/                             # Driver Picker — standalone WPF app (.NET 8)
-├── F1SimHubLive.Picker.csproj       # Single-file self-contained publish, admin manifest
+├── F1SimHubLive.Picker.csproj       # Single-file self-contained publish, asInvoker manifest
 ├── App.xaml / App.xaml.cs
 ├── MainWindow.xaml / MainWindow.xaml.cs  # Always-on-top driver grid UI
 ├── Models/
@@ -724,10 +724,11 @@ picker/                             # Driver Picker — standalone WPF app (.NET
 ├── Services/
 │   ├── MultiViewerDriverListClient.cs  # /DriverList + /ChampionshipPrediction
 │   ├── SettingsFileWriter.cs       # Writes DriverNumber to plugin settings.json
+│   ├── SettingsPathResolver.cs     # Resolves %APPDATA%\F1SimHubLive\ + migrates legacy (picker copy)
 │   └── HexToBrushConverter.cs      # XAML helper
 ├── Assets/
 │   └── picker.ico                  # Multi-res app icon
-└── app.manifest                    # requireAdministrator
+└── app.manifest                    # asInvoker (no UAC) — v1.3.0+
 
 dashboards/                         # Source-of-truth Dash Studio templates
 └── F1RaceSim_GSIFPEV2/                      # Deployed by the installer to SimHub\DashTemplates\

@@ -322,7 +322,7 @@ namespace F1SimHubLive
                 {
                     FileName = exe,
                     WorkingDirectory = dllDir,
-                    UseShellExecute = true, // honour the requireAdministrator manifest
+                    UseShellExecute = true, // ShellExecute path; picker manifest is asInvoker (v1.3.0+) so no UAC fires either way
                 });
                 Log($"launched driver picker: {exe}");
             }
@@ -452,8 +452,10 @@ namespace F1SimHubLive
 
         private static string SettingsPath()
         {
-            var dir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? ".";
-            return Path.Combine(dir, "F1SimHubLive.Settings.json");
+            // v1.3.0+: per-user APPDATA. Resolver handles one-shot migration
+            // from the legacy in-plugin-folder location used in v1.2.x and
+            // earlier. See SettingsPathResolver.cs.
+            return SettingsPathResolver.Resolve(Log);
         }
     }
 }

@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.3.0] — 2026-06-06
+
+### Changed
+- **🎉 Picker no longer triggers a UAC prompt on launch.** Manifest changed from `requireAdministrator` to `asInvoker`. The reason the old manifest existed was that the picker writes `DriverNumber` (and any other field it touches) to `F1SimHubLive.Settings.json`, which lived under `C:\Program Files (x86)\SimHub\` — an admin-only path. Net effect for users: every picker launch popped a UAC dialog, every `AutoLaunchPicker = true` session popped UAC on SimHub start, and the Start Menu shortcut inherited the requirement. Annoying enough that the v1.1.0 changelog explicitly flagged it as the reason `AutoLaunchPicker` defaulted to off.
+- **Settings file moved to per-user location.** `F1SimHubLive.Settings.json` now lives at `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json` (typically `C:\Users\<you>\AppData\Roaming\F1SimHubLive\`). Both the plugin and the picker resolve the path through a shared `SettingsPathResolver` so they never disagree on where the file is. Writes happen in user space — no admin needed.
+- **Automatic one-shot migration from v1.2.x.** On the first run of the picker or the plugin after upgrade, the resolver checks for a legacy file at `C:\Program Files (x86)\SimHub\F1SimHubLive.Settings.json` and, if found, byte-copies it to the new per-user path. Every user customization — `DriverNumber`, `RpmShiftLightStartRpm`/`EndRpm`, `OutputHz`, `RenderDelayMs`, `MultiViewerBaseUrl`, `AutoLaunchPicker`, etc. — is preserved. The legacy file is **never deleted** (no admin available); it's left in place but never read again. Users who want a perfectly clean uninstall can delete it manually.
+- **Installer now writes seed config to `%PROGRAMDATA%\F1SimHubLive\`**, not to `Program Files (x86)\SimHub\`. The installer runs elevated, but the *real* user's APPDATA is not reliably writable from an elevated process (the elevating admin could be a different account than the desktop user). Per-machine PROGRAMDATA is the right intermediary: installer-writable, user-readable. On first picker / plugin run, the resolver copies the PROGRAMDATA seed into the user's APPDATA. `Deployer.WriteSettings` also preserves user values from three candidate locations — APPDATA → PROGRAMDATA → legacy Program Files — so re-installing v1.3.x never blows away a hand-tuned config.
+- **`AutoLaunchPicker = true` is now fully unattended.** Previously you'd get a UAC dialog every time SimHub started. With v1.3.0 it just opens. Safe to leave on permanently. The XML doc on `AutoLaunchPicker` in `Settings.cs` is updated to reflect this.
+- **Documentation refresh** for the per-user move: README's settings table, troubleshooting section, and file-layout tree all reflect the new path; PICKER.md's privileges callout flips from "runs as administrator (UAC prompt on launch)" to "runs as `asInvoker` — no UAC prompt, ever"; troubleshooting's "click doesn't change the wheel" entry updated to point at `%APPDATA%\F1SimHubLive\` and call out Controlled Folder Access as a more likely culprit than a permission error; new "stale settings after upgrading from v1.2.x" entry explains the automatic migration.
+
+### Added
+- **`SettingsPathResolver`** — single source of truth for "where is `F1SimHubLive.Settings.json`?" Mirrored in `picker/Services/SettingsPathResolver.cs` (picker, `net8.0-windows`) and `SettingsPathResolver.cs` at repo root (plugin, `net48`). The two copies share identical logic but can't be a shared csproj — the picker is `net8.0-windows`/WPF and the plugin is `net48`/SimHub plugin DLL, completely different dependency trees. Both files have a header comment flagging the duplication and reminding maintainers to keep them in sync.
+
 ## [1.1.3] — 2026-06-05
 
 ### Added

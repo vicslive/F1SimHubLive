@@ -19,6 +19,7 @@
         <svc:SegmentStatusToBrushConverter x:Key="SegmentStatusToBrush" />
         <svc:PositionToTextConverter x:Key="PositionToText" />
         <svc:TruthyToVisibilityConverter x:Key="TruthyToVisibility" />
+        <svc:CountToGridStarConverter x:Key="CountToGridStar" />
 
         <Style x:Key="DriverButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#1A1A20" />
@@ -258,39 +259,50 @@
              the header so the list can use every pixel for timing data. -->
         <ScrollViewer VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
-                <ItemsControl x:Name="DriverList">
+                <ItemsControl x:Name="DriverList" Grid.IsSharedSizeScope="True">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type models:DriverTimingRow}">
                         <Button Style="{StaticResource DriverButtonStyle}"
-                                Margin="0,0,0,6"
+                                Margin="0,0,0,3"
                                 Click="DriverButton_Click"
                                 Tag="{Binding RacingNumber}">
-                            <Grid Height="72">
+                            <Grid Height="46">
                                 <Grid.ColumnDefinitions>
                                     <!-- Position number -->
-                                    <ColumnDefinition Width="36" />
+                                    <ColumnDefinition Width="30" />
                                     <!-- Team-colour TLA tile -->
-                                    <ColumnDefinition Width="60" />
-                                    <!-- Driver name + team -->
-                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="52" />
+                                    <!-- Driver name + team. Auto width but shared across
+                                         all rows so every row's name column ends at the
+                                         same x position (= max name+team width across
+                                         visible drivers). Without SharedSizeGroup, each
+                                         row's name col sized independently and the
+                                         downstream Speed / LAST / INT columns shifted
+                                         left/right depending on the local name length. -->
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="NameCol" />
                                     <!-- Current speed (km/h) -->
-                                    <ColumnDefinition Width="78" />
+                                    <ColumnDefinition Width="72" />
                                     <!-- LAST + BEST lap times -->
-                                    <ColumnDefinition Width="95" />
+                                    <ColumnDefinition Width="92" />
                                     <!-- INT + LDR -->
-                                    <ColumnDefinition Width="80" />
-                                    <!-- Tire badge + age -->
-                                    <ColumnDefinition Width="58" />
+                                    <ColumnDefinition Width="78" />
+                                    <!-- Tire badge + age — Vic likes the current size,
+                                         row height is sized to it. -->
+                                    <ColumnDefinition Width="50" />
                                     <!-- Pit count -->
-                                    <ColumnDefinition Width="34" />
-                                    <!-- Sector segment strip (3 sectors, two-row times) -->
-                                    <ColumnDefinition Width="200" />
+                                    <ColumnDefinition Width="30" />
+                                    <!-- Sector segment strip (3 sectors, two-row times).
+                                         Star with MinWidth so it absorbs all remaining
+                                         horizontal space, eliminating the dead zone
+                                         that used to sit between the driver name
+                                         (when it was *) and the speed column. -->
+                                    <ColumnDefinition Width="*" MinWidth="260" />
                                 </Grid.ColumnDefinitions>
 
                                 <!-- Position -->
                                 <TextBlock Grid.Column="0"
                                            Text="{Binding Position, Converter={StaticResource PositionToText}}"
-                                           FontSize="22" FontWeight="Black"
+                                           FontSize="18" FontWeight="Black"
                                            Foreground="#E8E8EE"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
@@ -299,26 +311,26 @@
                                 <Border Grid.Column="1"
                                         Background="{Binding TeamColour, Converter={StaticResource HexToBrush}}"
                                         CornerRadius="3"
-                                        Margin="0,4">
+                                        Margin="0,3">
                                     <TextBlock Text="{Binding Tla}"
                                                Foreground="White"
-                                               FontSize="20" FontWeight="Black"
+                                               FontSize="16" FontWeight="Black"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center" />
                                 </Border>
 
                                 <!-- Name + team -->
                                 <StackPanel Grid.Column="2" VerticalAlignment="Center"
-                                            Margin="10,0,4,0">
+                                            Margin="8,0,8,0">
                                     <TextBlock Text="{Binding LastName}"
-                                               FontSize="14" FontWeight="Bold"
+                                               FontSize="13" FontWeight="Bold"
                                                Foreground="#FFFFFF"
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding TeamName}"
-                                               FontSize="10"
+                                               FontSize="9"
                                                Foreground="#9898A4"
                                                TextTrimming="CharacterEllipsis"
-                                               Margin="0,1,0,0" />
+                                               Margin="0,0,0,0" />
                                 </StackPanel>
 
                                 <!-- Current speed (km/h) — big number with a tiny unit label.
@@ -326,19 +338,19 @@
                                      telemetry client's OnSpeedsBatch event. -->
                                 <StackPanel Grid.Column="3" VerticalAlignment="Center"
                                             HorizontalAlignment="Right"
-                                            Margin="0,0,8,0">
+                                            Margin="0,0,6,0">
                                     <TextBlock Text="{Binding SpeedKmh}"
-                                               FontSize="22" FontWeight="Black"
+                                               FontSize="17" FontWeight="Black"
                                                Foreground="#E8E8EE"
                                                TextAlignment="Right"
                                                FontFamily="Consolas"
-                                               LineHeight="22"
+                                               LineHeight="18"
                                                LineStackingStrategy="BlockLineHeight" />
                                     <TextBlock Text="km/h"
-                                               FontSize="9" FontWeight="SemiBold"
+                                               FontSize="8" FontWeight="SemiBold"
                                                Foreground="#6F6F7A"
                                                TextAlignment="Right"
-                                               Margin="0,1,0,0" />
+                                               Margin="0,0,0,0" />
                                 </StackPanel>
 
                                 <!-- LAST + BEST lap times stack -->
@@ -346,32 +358,32 @@
                                             Margin="0,0,4,0">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="30" />
+                                            <ColumnDefinition Width="28" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="LAST"
-                                                   FontSize="9" FontWeight="SemiBold"
+                                                   FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
                                                    VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding LastLapTime}"
-                                                   FontSize="13" FontWeight="SemiBold"
+                                                   FontSize="12" FontWeight="SemiBold"
                                                    Foreground="{Binding LastLapStatus, Converter={StaticResource LapStatusToBrush}}"
                                                    TextAlignment="Right"
                                                    FontFamily="Consolas" />
                                     </Grid>
-                                    <Grid Margin="0,2,0,0">
+                                    <Grid Margin="0,1,0,0">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="30" />
+                                            <ColumnDefinition Width="28" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="BEST"
-                                                   FontSize="9" FontWeight="SemiBold"
+                                                   FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
                                                    VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding BestLapTime}"
-                                                   FontSize="13" FontWeight="SemiBold"
+                                                   FontSize="12" FontWeight="SemiBold"
                                                    Foreground="{Binding BestLapStatus, Converter={StaticResource LapStatusToBrush}}"
                                                    TextAlignment="Right"
                                                    FontFamily="Consolas" />
@@ -384,59 +396,62 @@
                                             Margin="0,0,4,0">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="24" />
+                                            <ColumnDefinition Width="22" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="INT"
-                                                   FontSize="9" FontWeight="SemiBold"
+                                                   FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
                                                    VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding IntervalToAhead}"
-                                                   FontSize="12" FontWeight="SemiBold"
+                                                   FontSize="11" FontWeight="SemiBold"
                                                    Foreground="#C8C8D0"
                                                    TextAlignment="Right"
                                                    FontFamily="Consolas" />
                                     </Grid>
-                                    <Grid Margin="0,2,0,0">
+                                    <Grid Margin="0,1,0,0">
                                         <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="24" />
+                                            <ColumnDefinition Width="22" />
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="LDR"
-                                                   FontSize="9" FontWeight="SemiBold"
+                                                   FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
                                                    VerticalAlignment="Center" />
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding GapToLeader}"
-                                                   FontSize="12" FontWeight="SemiBold"
+                                                   FontSize="11" FontWeight="SemiBold"
                                                    Foreground="#C8C8D0"
                                                    TextAlignment="Right"
                                                    FontFamily="Consolas" />
                                     </Grid>
                                 </StackPanel>
 
-                                <!-- Tire badge + age -->
+                                <!-- Tire badge + age. Vic explicitly wanted this kept
+                                     at the current visual size — the whole row height
+                                     is now tuned around the tire stack's natural
+                                     footprint (28px badge + 1 + ~10 text = ~40px). -->
                                 <StackPanel Grid.Column="6"
                                             Orientation="Vertical"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center">
                                     <Border Background="{Binding TireCompoundColor, Converter={StaticResource HexToBrush}}"
-                                            Width="30" Height="30"
-                                            CornerRadius="15"
+                                            Width="28" Height="28"
+                                            CornerRadius="14"
                                             BorderBrush="#0A0A0E"
                                             BorderThickness="2">
                                         <TextBlock Text="{Binding TireCompoundLetter}"
                                                    Foreground="#0A0A0E"
-                                                   FontSize="14" FontWeight="Black"
+                                                   FontSize="13" FontWeight="Black"
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center" />
                                     </Border>
                                     <TextBlock Text="{Binding TireAge, StringFormat='L{0}'}"
-                                               FontSize="10" FontWeight="SemiBold"
+                                               FontSize="9" FontWeight="SemiBold"
                                                Foreground="#B8B8C4"
                                                HorizontalAlignment="Center"
-                                               Margin="0,1,0,0" />
+                                               Margin="0,0,0,0" />
                                 </StackPanel>
 
                                 <!-- Pit count -->
@@ -446,14 +461,14 @@
                                             VerticalAlignment="Center"
                                             Visibility="{Binding PitStopCount, Converter={StaticResource TruthyToVisibility}}">
                                     <TextBlock Text="PIT"
-                                               FontSize="9" FontWeight="SemiBold"
+                                               FontSize="8" FontWeight="SemiBold"
                                                Foreground="#6F6F7A"
                                                HorizontalAlignment="Center" />
                                     <TextBlock Text="{Binding PitStopCount}"
-                                               FontSize="16" FontWeight="Black"
+                                               FontSize="14" FontWeight="Black"
                                                Foreground="#E8E8EE"
                                                HorizontalAlignment="Center"
-                                               LineHeight="18"
+                                               LineHeight="16"
                                                LineStackingStrategy="BlockLineHeight" />
                                 </StackPanel>
 
@@ -461,12 +476,17 @@
                                      mini-bars on top, current sector time in the
                                      middle, and best sector time at the bottom
                                      (yellow=PB, purple=session best), matching
-                                     MultiViewer's two-row time stack. -->
-                                <Grid Grid.Column="8" Margin="6,6,4,6">
+                                     MultiViewer's two-row time stack.
+                                     Sub-column widths are weighted by each sector's
+                                     SegmentCount so the per-segment bar pixel width
+                                     stays uniform across S1/S2/S3 — without this the
+                                     sector with the most mini-sectors visually has
+                                     skinnier bars than the others. -->
+                                <Grid Grid.Column="8" Margin="4,2,2,2">
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="{Binding Sectors[0].SegmentCount, Converter={StaticResource CountToGridStar}}" />
+                                        <ColumnDefinition Width="{Binding Sectors[1].SegmentCount, Converter={StaticResource CountToGridStar}}" />
+                                        <ColumnDefinition Width="{Binding Sectors[2].SegmentCount, Converter={StaticResource CountToGridStar}}" />
                                     </Grid.ColumnDefinitions>
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="*" />
@@ -493,14 +513,14 @@
                                     </ItemsControl>
                                     <TextBlock Grid.Column="0" Grid.Row="1"
                                                Text="{Binding Sectors[0].Time}"
-                                               FontSize="10" FontWeight="SemiBold"
+                                               FontSize="9" FontWeight="SemiBold"
                                                Foreground="{Binding Sectors[0].Status, Converter={StaticResource LapStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
-                                               Margin="0,2,2,0" />
+                                               Margin="0,1,2,0" />
                                     <TextBlock Grid.Column="0" Grid.Row="2"
                                                Text="{Binding Sectors[0].BestTime}"
-                                               FontSize="10" FontWeight="SemiBold"
+                                               FontSize="9" FontWeight="SemiBold"
                                                Foreground="{Binding Sectors[0].BestStatus, Converter={StaticResource LapStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
@@ -525,14 +545,14 @@
                                     </ItemsControl>
                                     <TextBlock Grid.Column="1" Grid.Row="1"
                                                Text="{Binding Sectors[1].Time}"
-                                               FontSize="10" FontWeight="SemiBold"
+                                               FontSize="9" FontWeight="SemiBold"
                                                Foreground="{Binding Sectors[1].Status, Converter={StaticResource LapStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
-                                               Margin="0,2,2,0" />
+                                               Margin="0,1,2,0" />
                                     <TextBlock Grid.Column="1" Grid.Row="2"
                                                Text="{Binding Sectors[1].BestTime}"
-                                               FontSize="10" FontWeight="SemiBold"
+                                               FontSize="9" FontWeight="SemiBold"
                                                Foreground="{Binding Sectors[1].BestStatus, Converter={StaticResource LapStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
@@ -556,14 +576,14 @@
                                     </ItemsControl>
                                     <TextBlock Grid.Column="2" Grid.Row="1"
                                                Text="{Binding Sectors[2].Time}"
-                                               FontSize="10" FontWeight="SemiBold"
+                                               FontSize="9" FontWeight="SemiBold"
                                                Foreground="{Binding Sectors[2].Status, Converter={StaticResource LapStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
-                                               Margin="0,2,0,0" />
+                                               Margin="0,1,0,0" />
                                     <TextBlock Grid.Column="2" Grid.Row="2"
                                                Text="{Binding Sectors[2].BestTime}"
-                                               FontSize="10" FontWeight="SemiBold"
+                                               FontSize="9" FontWeight="SemiBold"
                                                Foreground="{Binding Sectors[2].BestStatus, Converter={StaticResource LapStatusToBrush}}"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"

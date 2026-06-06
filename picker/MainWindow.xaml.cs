@@ -490,16 +490,13 @@ public partial class MainWindow : Window
 
     /// <summary>
     /// Color for LED at logical index i (0 = bottom-most, LedCount-1 = top).
-    /// Mirrors the device JSON gradient: first 30% green, next 33% blue,
-    /// next 31% red, top 6% white redline.
+    /// Mirrors the physical wheel: 5 green (1-5), 5 blue (6-10), 4 red (11-14).
+    /// No white redline — the wheel does not have one.
     /// </summary>
     private static Brush LedColorAt(int logicalIndex)
     {
-        // Convert logical index into the percentage band it lights at.
-        double bandTop = (logicalIndex + 1) * 100.0 / LedCount;
-        if (bandTop > 94) return WhiteLedBrush;
-        if (bandTop > 63) return RedLedBrush;
-        if (bandTop > 30) return BlueLedBrush;
-        return GreenLedBrush;
+        if (logicalIndex < 5) return GreenLedBrush;
+        if (logicalIndex < 10) return BlueLedBrush;
+        return RedLedBrush;
     }
 }

@@ -6,10 +6,9 @@ using System.Text.Json.Nodes;
 namespace F1SimHubLive.Picker.Services;
 
 /// <summary>
-/// Atomic write of F1SimHubLive.Settings.json with only DriverNumber changed.
-/// Preserves every other field exactly. Writes to a sibling temp file and
-/// renames into place so the plugin's FileSystemWatcher never sees a partial
-/// JSON document.
+/// Atomic write of F1SimHubLive.Settings.json. Preserves every untouched
+/// field exactly. Writes to a sibling temp file and renames into place so
+/// the plugin's FileSystemWatcher never sees a partial JSON document.
 /// </summary>
 internal static class SettingsFileWriter
 {
@@ -36,10 +35,59 @@ internal static class SettingsFileWriter
     }
 
     /// <summary>
+    /// Reads the shift-light RPM range from the settings file. Falls back to
+    /// the plugin's defaults (5500 / 14000) if the file is missing,
+    /// malformed, or the fields aren't present.
+    /// </summary>
+    public static (int startRpm, int endRpm) ReadShiftLightRange(string settingsPath)
+    {
+        const int defaultStart = 5500;
+        const int defaultEnd = 14000;
+        try
+        {
+            if (!File.Exists(settingsPath)) return (defaultStart, defaultEnd);
+            using var doc = JsonDocument.Parse(File.ReadAllText(settingsPath));
+            int start = ReadInt(doc.RootElement, "RpmShiftLightStartRpm", defaultStart);
+            int end = ReadInt(doc.RootElement, "RpmShiftLightEndRpm", defaultEnd);
+            return (start, end);
+        }
+        catch
+        {
+            return (defaultStart, defaultEnd);
+        }
+    }
+
+    /// <summary>
     /// Replaces DriverNumber in the settings file with the given value, atomically.
     /// Throws on IO / permission failures so the UI can surface them.
     /// </summary>
     public static void WriteDriverNumber(string settingsPath, string driverNumber)
+    {
+        WriteField(settingsPath, obj => obj["DriverNumber"] = driverNumber);
+    }
+
+    /// <summary>
+    /// Replaces RpmShiftLightStartRpm and RpmShiftLightEndRpm in the settings
+    /// file, atomically. The plugin hot-reloads via FileSystemWatcher so the
+    /// wheel LEDs re-map within ~250 ms of the call returning.
+    /// </summary>
+    public static void WriteShiftLightRange(string settingsPath, int startRpm, int endRpm)
+    {
+        // Clamp to sane racing-engine bounds so a stray slider drag can't
+        // poison the plugin with garbage that disables the RpmShiftPercent
+        // formula entirely.
+        startRpm = Math.Clamp(startRpm, 1000, 19000);
+        endRpm = Math.Clamp(endRpm, 1000, 20000);
+        if (endRpm <= startRpm) endRpm = startRpm + 100;
+
+        WriteField(settingsPath, obj =>
+        {
+            obj["RpmShiftLightStartRpm"] = startRpm;
+            obj["RpmShiftLightEndRpm"] = endRpm;
+        });
+    }
+
+    private static void WriteField(string settingsPath, Action<JsonObject> mutate)
     {
         JsonNode root;
         if (File.Exists(settingsPath))
@@ -56,9 +104,7 @@ internal static class SettingsFileWriter
             throw new InvalidDataException(
                 $"settings file root is not a JSON object: {settingsPath}");
         }
-        // Write as string to match Settings.cs's typed string property and the
-        // example file shape; JsonConvert.DeserializeObject coerces either way.
-        obj["DriverNumber"] = driverNumber;
+        mutate(obj);
 
         string tmp = settingsPath + ".picker.tmp";
         File.WriteAllText(tmp, obj.ToJsonString(Indented));
@@ -67,4 +113,13 @@ internal static class SettingsFileWriter
         // the rename and we get a clean reload.
         File.Move(tmp, settingsPath, overwrite: true);
     }
+
+    private static int ReadInt(JsonElement root, string name, int fallback)
+    {
+        if (!root.TryGetProperty(name, out var v)) return fallback;
+        if (v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i)) return i;
+        if (v.ValueKind == JsonValueKind.String && int.TryParse(v.GetString(), out var s)) return s;
+        return fallback;
+    }
 }
+

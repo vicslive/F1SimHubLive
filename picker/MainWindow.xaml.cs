@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -8,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using System.Windows.Navigation;
 using System.Windows.Threading;
 using F1SimHubLive.Picker.Models;
@@ -22,13 +24,35 @@ public partial class MainWindow : Window
     //   --mv-url <url>      override MultiViewer base URL
     private const string DefaultMvUrl = "http://localhost:10101";
     private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
+    private const int LedCount = 14;
+    // Slider-to-disk debounce: drag events fire fast (50–60 Hz), so wait for
+    // the user to settle for ~250 ms before writing the settings file. The
+    // plugin reloads via FileSystemWatcher within ~250 ms of the write, so
+    // total perceived latency is "drag stops → ~half a second → wheel LEDs
+    // update". Matches the existing driver-switch latency budget.
+    private static readonly TimeSpan SliderWriteDelay = TimeSpan.FromMilliseconds(250);
 
     private readonly string _settingsPath;
+    private readonly string _mvUrl;
     private readonly MultiViewerDriverListClient _mv;
     private readonly DispatcherTimer _pollTimer;
     private readonly FileSystemWatcher? _settingsWatcher;
     private readonly object _watcherLock = new();
     private DateTime _lastWatcherFire = DateTime.MinValue;
+
+    // LED preview state
+    private readonly PickerTelemetryClient _telemetry;
+    private readonly ObservableCollection<Brush> _ledBrushes = new();
+    private readonly DispatcherTimer _sliderWriteTimer;
+    private static readonly Brush DimLedBrush = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x20));
+    private static readonly Brush GreenLedBrush = new SolidColorBrush(Color.FromRgb(0x3F, 0xD0, 0x6A));
+    private static readonly Brush BlueLedBrush = new SolidColorBrush(Color.FromRgb(0x3C, 0x9C, 0xF0));
+    private static readonly Brush RedLedBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0x3A, 0x3A));
+    private static readonly Brush WhiteLedBrush = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xFA));
+    private int _startRpm = 5500;
+    private int _endRpm = 14000;
+    private double _lastRpm;
+    private bool _suppressSliderWrite; // true while loading from settings
 
     private CancellationTokenSource _ctsLifetime = new();
     private IReadOnlyList<DriverEntry> _lastDrivers = Array.Empty<DriverEntry>();
@@ -40,17 +64,47 @@ public partial class MainWindow : Window
 
         var (settingsPath, mvUrl) = ParseArgs(Environment.GetCommandLineArgs());
         _settingsPath = settingsPath ?? DefaultSettingsPath();
-        _mv = new MultiViewerDriverListClient(mvUrl ?? DefaultMvUrl);
+        _mvUrl = mvUrl ?? DefaultMvUrl;
+        _mv = new MultiViewerDriverListClient(_mvUrl);
+        _telemetry = new PickerTelemetryClient(_mvUrl);
 
         SettingsPathText.Text = _settingsPath;
         VersionText.Text = $"v{GetDisplayVersion()}";
         VersionText.ToolTip =
             $"F1SimHubLive Driver Picker v{GetDisplayVersion()}\n\n" +
             $"Settings file:\n{_settingsPath}\n\n" +
-            $"MultiViewer:\n{mvUrl ?? DefaultMvUrl}";
+            $"MultiViewer:\n{_mvUrl}";
 
         _currentDriverNumber = SettingsFileWriter.ReadCurrentDriverNumber(_settingsPath) ?? "";
         UpdateCurrentDriverText();
+
+        InitializeLedStrip();
+        LoadSliderRangeFromSettings();
+        ApplyLedsForRpm(_lastRpm); // paints the strip dim at startup
+
+        // Telemetry wiring: every CarData frame for the active driver becomes
+        // a brush refresh + RPM readout. Marshalled to the UI thread because
+        // the HTTP loop runs on a worker.
+        _telemetry.OnRpm += rpm => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            _lastRpm = rpm;
+            ApplyLedsForRpm(rpm);
+            RpmReadout.Text = ((int)Math.Round(rpm)).ToString();
+        }));
+        _telemetry.OnStatus += s => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            // Telemetry status is informational; the 5-second driver-list
+            // poller owns StatusText. We could surface "telemetry
+            // disconnected" later if there's a real need; for now the LED
+            // strip going dim is its own signal.
+            _ = s;
+        }));
+        if (!string.IsNullOrEmpty(_currentDriverNumber))
+            _telemetry.SetDriverNumber(_currentDriverNumber);
+        _telemetry.Start(pollIntervalMs: 200);
+
+        _sliderWriteTimer = new DispatcherTimer { Interval = SliderWriteDelay };
+        _sliderWriteTimer.Tick += SliderWriteTimer_Tick;
 
         try
         {
@@ -85,7 +139,9 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             _pollTimer.Stop();
+            _sliderWriteTimer.Stop();
             _settingsWatcher?.Dispose();
+            _telemetry.Dispose();
             _ctsLifetime.Cancel();
         };
     }
@@ -174,6 +230,7 @@ public partial class MainWindow : Window
         {
             SettingsFileWriter.WriteDriverNumber(_settingsPath, number);
             _currentDriverNumber = number;
+            _telemetry.SetDriverNumber(number);
             // Re-render so the highlight moves immediately; the next poll will
             // also confirm via DriverList refresh.
             RenderDrivers(_lastDrivers);
@@ -216,8 +273,15 @@ public partial class MainWindow : Window
                 if (!string.IsNullOrEmpty(n) && n != _currentDriverNumber)
                 {
                     _currentDriverNumber = n!;
+                    _telemetry.SetDriverNumber(n!);
                     RenderDrivers(_lastDrivers);
                 }
+                // Also re-read the shift range — covers external edits and
+                // round-trips after we wrote it ourselves (cheap idempotent
+                // update; the suppress flag stops the resulting slider
+                // ValueChanged from looping back to disk).
+                LoadSliderRangeFromSettings();
+                ApplyLedsForRpm(_lastRpm);
             }
             catch { /* file mid-write — wait for next event */ }
         }));
@@ -301,5 +365,133 @@ public partial class MainWindow : Window
         {
             // Fall back silently — the URL is still visible in the link text.
         }
+    }
+
+    // -------- LED preview + slider plumbing --------
+
+    private void InitializeLedStrip()
+    {
+        // Items render TOP-to-BOTTOM in the StackPanel, but the LED bar
+        // should fill BOTTOM-to-TOP (LED 1 lights first at low RPM). We
+        // therefore store brushes with index 0 = bottom-most LED and add
+        // them in REVERSE order so the visual ends up bottom-up.
+        _ledBrushes.Clear();
+        for (int i = 0; i < LedCount; i++) _ledBrushes.Add(DimLedBrush);
+        LedStrip.ItemsSource = _ledBrushes;
+    }
+
+    private void LoadSliderRangeFromSettings()
+    {
+        var (start, end) = SettingsFileWriter.ReadShiftLightRange(_settingsPath);
+        if (start == _startRpm && end == _endRpm
+            && Math.Abs(StartRpmSlider.Value - start) < 0.5
+            && Math.Abs(EndRpmSlider.Value - end) < 0.5)
+        {
+            return; // nothing changed
+        }
+        _startRpm = start;
+        _endRpm = end;
+        _suppressSliderWrite = true;
+        try
+        {
+            StartRpmSlider.Value = start;
+            EndRpmSlider.Value = end;
+            StartRpmText.Text = start.ToString();
+            EndRpmText.Text = end.ToString();
+            RangeSummary.Text = $"{start} → {end} RPM";
+        }
+        finally
+        {
+            _suppressSliderWrite = false;
+        }
+    }
+
+    private void StartRpmSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        int v = (int)Math.Round(e.NewValue);
+        _startRpm = v;
+        StartRpmText.Text = v.ToString();
+        RangeSummary.Text = $"{_startRpm} → {_endRpm} RPM";
+        ApplyLedsForRpm(_lastRpm);
+        ScheduleSliderWrite();
+    }
+
+    private void EndRpmSlider_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        int v = (int)Math.Round(e.NewValue);
+        _endRpm = v;
+        EndRpmText.Text = v.ToString();
+        RangeSummary.Text = $"{_startRpm} → {_endRpm} RPM";
+        ApplyLedsForRpm(_lastRpm);
+        ScheduleSliderWrite();
+    }
+
+    private void ScheduleSliderWrite()
+    {
+        if (_suppressSliderWrite) return;
+        // Reset the timer on every drag tick — the actual disk write only
+        // fires once the user has stopped dragging for SliderWriteDelay.
+        _sliderWriteTimer.Stop();
+        _sliderWriteTimer.Start();
+    }
+
+    private void SliderWriteTimer_Tick(object? sender, EventArgs e)
+    {
+        _sliderWriteTimer.Stop();
+        try
+        {
+            SettingsFileWriter.WriteShiftLightRange(_settingsPath, _startRpm, _endRpm);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            StatusText.Text = "Could not save shift-light range — run picker as administrator.";
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = $"Failed to save shift-light range: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// Repaints the LED strip for the given raw RPM value, using the same
+    /// 0/30/63/94 threshold scheme as the wheel device JSON so what the
+    /// picker shows matches what the wheel renders.
+    /// </summary>
+    private void ApplyLedsForRpm(double rpm)
+    {
+        if (_ledBrushes.Count != LedCount) return;
+        double range = Math.Max(1, _endRpm - _startRpm);
+        double percent = Math.Clamp((rpm - _startRpm) / range * 100.0, 0, 100);
+        // LedCount LEDs total; if percent crosses a per-LED threshold, that
+        // LED lights up. Bottom LED (index 0 here) lights at the smallest
+        // percent, top LED (index LedCount-1) lights last.
+        for (int i = 0; i < LedCount; i++)
+        {
+            // Threshold for LED i to light: ((i + 1) / LedCount) * 100.
+            // The bottom LED (i=0) lights as soon as any RPM is above start.
+            double threshold = (i + 0.001) * 100.0 / LedCount;
+            bool lit = percent >= threshold;
+            // Render order: index 0 of the brush list maps to LED 1
+            // (bottom). The StackPanel renders top-first, so we put the
+            // highest-index brush at the FIRST collection position so it
+            // appears at the top of the strip.
+            int visualIndex = LedCount - 1 - i;
+            _ledBrushes[visualIndex] = lit ? LedColorAt(i) : DimLedBrush;
+        }
+    }
+
+    /// <summary>
+    /// Color for LED at logical index i (0 = bottom-most, LedCount-1 = top).
+    /// Mirrors the device JSON gradient: first 30% green, next 33% blue,
+    /// next 31% red, top 6% white redline.
+    /// </summary>
+    private static Brush LedColorAt(int logicalIndex)
+    {
+        // Convert logical index into the percentage band it lights at.
+        double bandTop = (logicalIndex + 1) * 100.0 / LedCount;
+        if (bandTop > 94) return WhiteLedBrush;
+        if (bandTop > 63) return RedLedBrush;
+        if (bandTop > 30) return BlueLedBrush;
+        return GreenLedBrush;
     }
 }

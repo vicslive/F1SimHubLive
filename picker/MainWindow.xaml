@@ -5,8 +5,8 @@
         xmlns:models="clr-namespace:F1SimHubLive.Picker.Models"
         Title="F1SimHubLive — Driver Picker"
         Icon="Assets/picker.ico"
-        Width="360" Height="740"
-        MinWidth="300" MinHeight="420"
+        Width="360" Height="960"
+        MinWidth="300" MinHeight="540"
         Background="#0F0F12"
         Foreground="#E8E8EC"
         FontFamily="Segoe UI"
@@ -88,6 +88,71 @@
                        TextTrimming="CharacterEllipsis" />
         </Border>
 
+        <!-- Shift-light range sliders -->
+        <Border DockPanel.Dock="Bottom" Background="#0A0A0E"
+                CornerRadius="6" Padding="10,8" Margin="0,8,0,0"
+                BorderBrush="#1F1F26" BorderThickness="1">
+            <StackPanel>
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Shift-light range" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#7F7F8A" />
+                    <TextBlock Grid.Column="1" x:Name="RangeSummary"
+                               Text=""
+                               FontSize="10" Foreground="#9898A4" />
+                </Grid>
+
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="60" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Start" FontSize="11" Foreground="#C8C8D0"
+                               VerticalAlignment="Center" />
+                    <Slider Grid.Column="1" x:Name="StartRpmSlider"
+                            Minimum="1000" Maximum="18000"
+                            TickFrequency="500" IsSnapToTickEnabled="True"
+                            SmallChange="100" LargeChange="500"
+                            VerticalAlignment="Center"
+                            Margin="6,0"
+                            ValueChanged="StartRpmSlider_ValueChanged" />
+                    <TextBlock Grid.Column="2" x:Name="StartRpmText"
+                               Text="—"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="#E8E8EE"
+                               VerticalAlignment="Center"
+                               TextAlignment="Right" />
+                </Grid>
+
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="60" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="End" FontSize="11" Foreground="#C8C8D0"
+                               VerticalAlignment="Center" />
+                    <Slider Grid.Column="1" x:Name="EndRpmSlider"
+                            Minimum="1000" Maximum="18000"
+                            TickFrequency="500" IsSnapToTickEnabled="True"
+                            SmallChange="100" LargeChange="500"
+                            VerticalAlignment="Center"
+                            Margin="6,0"
+                            ValueChanged="EndRpmSlider_ValueChanged" />
+                    <TextBlock Grid.Column="2" x:Name="EndRpmText"
+                               Text="—"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="#E8E8EE"
+                               VerticalAlignment="Center"
+                               TextAlignment="Right" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
         <!-- Footer -->
         <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
@@ -121,10 +186,59 @@
              VersionText.ToolTip. -->
         <TextBlock x:Name="SettingsPathText" Visibility="Collapsed" />
 
-        <!-- Driver list -->
-        <ScrollViewer VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
-            <ItemsControl x:Name="DriverList">
+        <!-- Driver list with vertical LED strip on the left.
+             Each driver row is 70 px tall (64 height + 6 bottom margin) so
+             two LEDs per row gives a clean 14-LED bar spanning roughly seven
+             drivers — which matches the picker's default visible roster. -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Vertical LED strip + live RPM readout.
+                 LEDs are fixed at 35 px tall so two LEDs line up exactly
+                 with one driver row (rows are 64 + 6 margin = 70 px). That
+                 means the full 14-LED bar spans the top 7 driver rows —
+                 anchored to the top so position 1 sits next to LED 14
+                 (the redline LED that lights last). -->
+            <DockPanel Grid.Column="0" LastChildFill="True"
+                       Width="26" Margin="0,0,8,0"
+                       VerticalAlignment="Top">
+                <Border DockPanel.Dock="Top"
+                        Background="#0A0A0E"
+                        CornerRadius="6" Padding="4,6"
+                        BorderBrush="#1F1F26" BorderThickness="1">
+                    <ItemsControl x:Name="LedStrip">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Vertical" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{Binding}"
+                                        Margin="0,1"
+                                        CornerRadius="2"
+                                        Height="35" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+                <TextBlock x:Name="RpmReadout"
+                           Text="—"
+                           FontSize="10" FontWeight="SemiBold"
+                           Foreground="#9898A4"
+                           TextAlignment="Center"
+                           Margin="0,4,0,0"
+                           ToolTip="Live RPM (MultiViewer telemetry)" />
+            </DockPanel>
+
+            <!-- Driver list -->
+            <ScrollViewer Grid.Column="1"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="DriverList">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type models:DriverEntry}">
                         <Button Style="{StaticResource DriverButtonStyle}"
@@ -183,5 +297,6 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
+        </Grid>
     </DockPanel>
 </Window>

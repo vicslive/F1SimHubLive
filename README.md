@@ -753,10 +753,12 @@ C:\Program Files (x86)\SimHub\DashTemplates\F1RaceSim_GSIFPEV2\
 └── (background images, tyre icons, F1 logos)
 ```
 
-The Driver Picker exe ALSO lands in the SimHub install dir alongside the plugin DLL (so it can read/write the plugin's `settings.json` without hardcoding a path):
+The Driver Picker exe ALSO lands in the SimHub install dir alongside the plugin DLL (so the plugin can spawn it via `AutoLaunchPicker` without doing a PATH lookup):
 ```
 C:\Program Files (x86)\SimHub\F1SimHubLive-Picker.exe
 ```
+
+> Since v1.3.0 the picker reads/writes its settings under `%APPDATA%\F1SimHubLive\` via the shared `SettingsPathResolver`, so co-locating with the plugin is no longer required for config — but installing them together keeps the install footprint tidy and means the plugin doesn't have to remember an absolute path.
 
 And a Start Menu shortcut is created in the All-Users Start Menu:
 ```

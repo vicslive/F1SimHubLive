@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using F1SimHubLive.Telemetry;
 using Newtonsoft.Json.Linq;
 
@@ -41,6 +42,25 @@ namespace F1SimHubLive.MultiViewer
                 snap.LastLapTime = (string?)last["Value"] ?? "";
             if (driver["IntervalToPositionAhead"] is JObject iv)
                 snap.IntervalToAhead = (string?)iv["Value"] ?? "";
+
+            // Race / replay shape: GapToLeader is a top-level string and
+            // IntervalToPositionAhead is { Value: "+0.401" }. Practice / Qualifying
+            // LIVE shape: those fields are absent and gaps live in Stats[0] as
+            // TimeDiffToFastest (= LDR) and TimeDifftoPositionAhead (= INT).
+            // Note MV's typo: lowercase 't' in "TimeDif*f*to*P*ositionAhead".
+            // Replays of non-race sessions reconstruct the race-shape fields,
+            // which is why this only manifests on live FP / Q sessions.
+            if (string.IsNullOrEmpty(snap.GapToLeader) || string.IsNullOrEmpty(snap.IntervalToAhead))
+            {
+                var stats0 = (driver["Stats"] as JArray)?.FirstOrDefault() as JObject;
+                if (stats0 != null)
+                {
+                    if (string.IsNullOrEmpty(snap.GapToLeader))
+                        snap.GapToLeader = (string?)stats0["TimeDiffToFastest"] ?? "";
+                    if (string.IsNullOrEmpty(snap.IntervalToAhead))
+                        snap.IntervalToAhead = (string?)stats0["TimeDifftoPositionAhead"] ?? "";
+                }
+            }
 
             if (driver["Sectors"] is JArray sectors)
             {

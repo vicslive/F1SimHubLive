@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.3.2] — 2026-06-06
+
+### Fixed
+- **Picker INT and LDR columns now show real values** instead of blank labels. The poll loop was reading from MV property names that don't exist on the public ``/api/v1/live-timing/TimingData`` payload (``TimeDiffToFastest`` / ``TimeDiffToPositionAhead`` — those are signalr-internal). Switched to the actual payload shape: ``GapToLeader`` (top-level string like ``"+9.322"``, ``"1 L"`` for lapped cars, ``""`` for the leader) and ``IntervalToPositionAhead.Value`` (nested object). Renamed the column label from ``GAP`` to ``LDR`` to match MultiViewer's terminology — INT = interval to the car ahead, LDR = gap to the leader. Visible immediately on any session, live or VOD.
+
 ## [1.3.1] — 2026-06-06
 
 ### Fixed

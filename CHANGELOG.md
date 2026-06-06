@@ -6,6 +6,42 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.3.8.1] — 2026-06-06
+
+### Fixed
+- **Picker `BEST` / `INT` / `LDR` now show segment-scoped values matching MV's cockpit, not all-qualifying values.** Vic caught this immediately after v1.3.8 shipped during Monaco Q3 2026: LEC was P10 in our picker with `BEST 1:12.774` (his Q2 PB) and `INT -0.988 / LDR +0.399`, but MV cockpit showed LEC `BEST 1:16.662` (his only Q3 lap) and `INT +2.650 / LDR +4.287`. The numbers and the position weren't telling the same story.
+
+  Root cause: `picker/Services/LiveTimingClient.cs` was reading `TimingData.BestLapTime.Value` (correct — segment-scoped, matches what MV shows) but then immediately overwriting it with `TimingStats.PersonalBestLapTime.Value` (wrong — that's the best across Q1+Q2+Q3 combined). The override was originally added in v1.3.4 because MV's per-lap `OverallFastest` / `PersonalFastest` flags fade to false on subsequent ticks, so we cross-referenced TimingStats to keep the green/purple pill stable. But TimingStats has BOTH the value and the position, and we accidentally took both instead of just the position.
+
+  Downstream effect: the v1.3.8 PB-differential gap calc (myPB − aheadPB / myPB − leaderPB) ran on the wrong value, so `INT` / `LDR` were computed against all-Q PBs across drivers. In a session like Q3 where some drivers' all-Q PB is from Q2 and others' is from Q3, the deltas mixed segments and produced numbers that looked plausible but matched nothing on screen.
+
+  Fix: kept the TimingStats cross-reference for the PILL COLOR (`PersonalBestLapTime.Position` → green/purple) but stopped overwriting the displayed `bestLap` string. `TimingData.BestLapTime.Value` was right all along — it's segment-scoped per MV's design (verified live by curling MV for ANT/HAM/NOR/LEC: top-level `BestLapTime.Value` always equals `BestLapTimes[currentSegmentIndex].Value`, even when an earlier segment was faster). With the override gone, both the `BEST` cell text and the PB-diff `INT`/`LDR` calculations use the same segment-scoped reference MV does, so the picker matches the cockpit number-for-number.
+
+  Plugin wheel HUD was unaffected because `MultiViewer/TimingDataDecoder.cs` reads `driver["BestLapTime"]["Value"]` directly and never had a TimingStats override — it was already segment-correct from v1.3.8 onward.
+
+  Process learning: when adding a cross-reference field for "stable presentation" (like the v1.3.4 PB-color), only take the specific sub-field you need (Position), not the whole record. Filed for code-review checklist.
+
+## [1.3.8] — 2026-06-06
+
+### Fixed
+- **Wheel HUD `INT` / `LDR` gap badges showed stale Q1 values for the rest of qualifying.** Caught by Vic at the Q2→Q3 break in Monaco: HAM picked, MV cockpit showed `INT +0.015` / `LDR +0.435` (the live Q2 PB-to-PB differentials), our wheel HUD showed `INT +0.147` / `LDR +0.484` (frozen Q1 values from ~25 minutes earlier). Side-by-side screenshots vs MV confirmed the picker also displayed the stale values.
+
+  Root cause: in qualifying, MV's `/api/v1/live-timing/TimingData` returns empty strings for the top-level `GapToLeader` / `IntervalToPositionAhead.Value` fields — MV's SignalR feed only populates per-stat blocks in Q-mode. The v1.3.4 fix added a fallback that read `Stats[0].TimeDiffToFastest` / `TimeDifftoPositionAhead`, which works fine in Q1 because Stats[0] is the live Q1 segment. But the Stats array is one entry per Q segment, and **each segment freezes its values when the next segment begins** (Stats[0]=Q1 frozen, Stats[1]=Q2 frozen-just-now, Stats[2]=Q3 empty mid-session). So once Q2 started, every driver's wheel + picker INT/LDR was reading the frozen Q1 snapshot and never updated again — masquerading as "live" data for the rest of the session.
+
+  Discovered the real MV cockpit formula by reverse-comparing values: HAM PB `1:12.934` − VER PB `1:12.499` = `+0.435`, exactly matching MV cockpit. MV doesn't display the Stats values at all in cockpit view — it computes PB-to-PB differential live from each driver's `PersonalBestLapTime`. Verified across 6 drivers; formula matches to 3 decimals.
+
+  Fix: removed the `Stats[0]` fallback from both `MultiViewer/TimingDataDecoder.cs` (plugin, drives wheel HUD) and `picker/Services/LiveTimingClient.cs` (picker). When MV's top-level gap fields are empty, synthesise `(myPB − aheadPB)` for INT and `(myPB − leaderPB)` for LDR using the BestLapTime values that were already being parsed for the `BEST` column. Format `+X.XXX` / `-X.XXX` with three decimals, invariant culture so EU comma-decimals don't break parsing. Plugin computes per-driver in `FillAhead`/`FillLeader`'s post-pass; picker computes per-row in `ApplySnapshot` after position-sort. Em-dash fallback when even PB-diff can't be computed (driver hasn't set a flying lap yet).
+
+  Plugin needs SimHub restart to load new DLL; picker auto-reloads when relaunched. Race / replay sessions are unaffected — MV populates the top-level fields there so the PB-diff branch never runs.
+
+  Process learning: should have flagged the Stats[0] approach in v1.3.4 review — "always reads index 0" + "array indexed by Q segment" was a smell. Added a defensive comment block at the removed fallback site explaining why Stats[N] is fundamentally wrong for Q-mode, so the next person doesn't reintroduce it.
+
+- **Picker now keeps `BEST` / `INT` / `LDR` visible when a driver is in pit, with `IN PIT` shown only on the `LAST` column** — matching MV Live Timing's behaviour. Symptom Vic flagged immediately after the Q-mode fix shipped: when a driver pitted (e.g. ANT for fresh tyres in Q3), our picker overlaid `IN PIT` on BOTH `INT` and `LDR` columns, hiding the gap reference. MV Live Timing only overlays `IN PIT` on `LAST` — it keeps `BEST`, `INT` and `LDR` visible so users still know how close the pitter is to the cars around them while he's stationary.
+
+  Fix in `picker/Services/LiveTimingClient.cs ApplySnapshot`: removed the `else if (s.InPit) { row.GapToLeader = "IN PIT"; row.IntervalToAhead = "IN PIT"; }` block entirely. Added inverse: when `s.InPit`, override `row.LastLapTime = "IN PIT"` and `row.LastLapStatus = LapStatus.InPit` (new enum sentinel). MV's TimingData returns the actual last lap time for in-pit drivers (the lap they crossed the line on before pitting), not a literal `"IN PIT"` string, so we synthesise it client-side.
+
+  Plumbed `LapStatus.InPit` through both pill converters: `LapStatusToBoxBackgroundConverter` now returns red (`#F44336`, Material UI red[500]) for InPit, and `LapStatusToBoxForegroundConverter` returns white. Reuses the existing `LAST` cell binding — no XAML changes needed. Net effect: `LAST` cell shows a red `IN PIT` pill, while `BEST` / `INT` / `LDR` show real values throughout the pit stop. Wheel HUD's `INT IN PIT` header (which describes the ahead car's pit state, not the picked driver's) is unchanged — that's separate dashboard logic and Vic uses it as a "the guy I'm chasing is stationary" cue.
+
 ## [1.3.7] — 2026-06-06
 
 ### Fixed

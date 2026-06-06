@@ -19,13 +19,14 @@ namespace F1SimHubLive.Picker.Services;
 internal sealed class LapStatusToBoxBackgroundConverter : IValueConverter
 {
     private static readonly SolidColorBrush Transparent = new(Colors.Transparent);
-    // MultiViewer-matched palette (Material UI green[500] / purple[500])
+    // MultiViewer-matched palette (Material UI green[500] / purple[500] / red[500])
     private static readonly SolidColorBrush Green = new(Color.FromRgb(0x4C, 0xAF, 0x50));
     private static readonly SolidColorBrush Purple = new(Color.FromRgb(0x9C, 0x27, 0xB0));
+    private static readonly SolidColorBrush Red = new(Color.FromRgb(0xF4, 0x43, 0x36));
 
     static LapStatusToBoxBackgroundConverter()
     {
-        Transparent.Freeze(); Green.Freeze(); Purple.Freeze();
+        Transparent.Freeze(); Green.Freeze(); Purple.Freeze(); Red.Freeze();
     }
 
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -36,6 +37,7 @@ internal sealed class LapStatusToBoxBackgroundConverter : IValueConverter
             {
                 LapStatus.SessionBest => Purple,
                 LapStatus.PersonalBest => Green,
+                LapStatus.InPit => Red,
                 _ => Transparent,
             };
         }

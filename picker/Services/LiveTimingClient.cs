@@ -212,10 +212,21 @@ public sealed class LiveTimingClient : IDisposable
             LapStatus bestStatus = LapFlag(line["BestLapTime"]);
 
             // Cross-reference TimingStats for the authoritative best-lap
-            // ranking — MV only sets OverallFastest on the lap that set the
-            // time, so the colour goes back to grey on later snapshots.
-            // PersonalBestLapTime.Position == 1 means session best (purple);
-            // any non-zero position implies it is at minimum a PB (yellow).
+            // PILL RANKING (not value). MV only sets OverallFastest on the
+            // lap that set the time, so the per-lap flag fades to grey on
+            // later snapshots — TimingStats keeps a stable position number.
+            // PersonalBestLapTime.Position == 1 -> session best (purple),
+            // any non-zero position -> at minimum a PB (green).
+            //
+            // IMPORTANT: do NOT overwrite `bestLap` with the TimingStats
+            // value. TimingStats.PersonalBestLapTime is the all-qualifying
+            // PB (best across Q1+Q2+Q3), but MV's cockpit / Live Timing
+            // shows the CURRENT-SEGMENT PB in the BEST column (i.e. Q3-only
+            // when you're in Q3). TimingData.BestLapTime.Value already
+            // gives us that segment-scoped value — leave it alone.
+            // Caught by Vic in Monaco Q3 2026 (v1.3.8): LEC was showing his
+            // Q2 1:12.774 instead of his Q3 1:16.662, which then poisoned
+            // the picker's INT/LDR PB-diff calc to give nonsense gaps.
             JsonObject? statsLine = null;
             if (statsLines != null
                 && statsLines.TryGetPropertyValue(racingNumber, out var statsNode)
@@ -228,8 +239,6 @@ public sealed class LiveTimingClient : IDisposable
                 var pblt = statsLine["PersonalBestLapTime"]?.AsObject();
                 if (pblt != null)
                 {
-                    var pbVal = pblt["Value"]?.GetValue<string>();
-                    if (!string.IsNullOrEmpty(pbVal)) bestLap = pbVal;
                     int pbPos = 0;
                     try { pbPos = pblt["Position"]?.GetValue<int>() ?? 0; } catch { }
                     bestStatus = pbPos == 1 ? LapStatus.SessionBest
@@ -244,25 +253,18 @@ public sealed class LiveTimingClient : IDisposable
             //
             // Practice / Qualifying LIVE shape: those two top-level fields are absent
             // (MV's live SignalR feed only emits per-stat blocks for non-race sessions).
-            // Gaps live in Stats[0] as TimeDiffToFastest (= gap to fastest, our LDR) and
-            // TimeDifftoPositionAhead (= gap to driver ahead = INT). Note MV's typo:
-            // lowercase 't' in "TimeDif*f*to*P*ositionAhead". Replay sessions populate
-            // GapToLeader/IntervalToPositionAhead even in Q because the replay layer
-            // reconstructs them, which is why this only broke on live qualifying.
+            //
+            // We used to fall back to Stats[0].TimeDiffToFastest /
+            // TimeDifftoPositionAhead here. That worked in Q1 only — once Q2 starts,
+            // Stats[0] is the FROZEN Q1 snapshot (Stats[1]=Q2, Stats[2]=Q3) so the
+            // wheel/picker would stick on stale Q1 gaps for the rest of the session.
+            // The real MV cockpit display in Q-mode is computed from each driver's
+            // PersonalBestLapTime ("PB") differential — see ApplySnapshot below where
+            // we compute (myPB - aheadPB) / (myPB - leaderPB) once the rows are
+            // sorted by position. So we leave gapToLeader/interval as raw MV values
+            // here and let ApplySnapshot synthesise the gap when those are empty.
             string gapToLeader = line["GapToLeader"]?.GetValue<string>() ?? "";
             string interval = line["IntervalToPositionAhead"]?["Value"]?.GetValue<string>() ?? "";
-            if (string.IsNullOrEmpty(gapToLeader) || string.IsNullOrEmpty(interval))
-            {
-                var statsArr = line["Stats"] as JsonArray;
-                var stats0 = statsArr != null && statsArr.Count > 0 ? statsArr[0] as JsonObject : null;
-                if (stats0 != null)
-                {
-                    if (string.IsNullOrEmpty(gapToLeader))
-                        gapToLeader = stats0["TimeDiffToFastest"]?.GetValue<string>() ?? "";
-                    if (string.IsNullOrEmpty(interval))
-                        interval = stats0["TimeDifftoPositionAhead"]?.GetValue<string>() ?? "";
-                }
-            }
 
             bool inPit = line["InPit"]?.GetValue<bool>() ?? false;
             bool retired = line["Retired"]?.GetValue<bool>() ?? false;
@@ -518,43 +520,82 @@ public sealed class LiveTimingClient : IDisposable
             }
 
             row.Position = s.Position;
-            row.LastLapTime = s.LastLapTime;
-            row.LastLapStatus = s.LastLapStatus;
+
+            // LAST: when in pit, show literal "IN PIT" + InPit status so the
+            // pill renders red (mirrors MV Live Timing). When not in pit, the
+            // raw lap time with its normal PB/SB pill colouring.
+            if (s.InPit)
+            {
+                row.LastLapTime = "IN PIT";
+                row.LastLapStatus = LapStatus.InPit;
+            }
+            else
+            {
+                row.LastLapTime = s.LastLapTime;
+                row.LastLapStatus = s.LastLapStatus;
+            }
             row.BestLapTime = s.BestLapTime;
             row.BestLapStatus = s.BestLapStatus;
 
-            // INT / LDR display precedence (mirrors the wheel HUD dashboard
-            // formulas added in v1.3.7 — keep these in sync if you change one):
+            // INT / LDR display precedence (keep in sync with the wheel HUD
+            // dashboard formulas + the plugin's TimingDataDecoder):
             //   1. Position == 1 -> the leader has no meaningful INT or LDR;
             //      show "—" so the column doesn't render a stale gap. MV
             //      sometimes leaves GapToLeader populated on the row that just
             //      became P1 (cached from the previous tick) which is why we
             //      force "—" defensively rather than trusting MV to return "".
-            //   2. InPit -> the gap-to-leader / gap-to-ahead is from the
-            //      driver's last lap crossing the line; once they peel into
-            //      pit lane it's misleading because the pit-lane delta will
-            //      shift it by ~20s before the next valid measurement. Show
-            //      "IN PIT" so the user sees pit state, not a stale gap.
-            //   3. Empty string from MV -> substitute "—" to match MV's
-            //      display convention. MV returns empty for INT/LDR when a
-            //      driver hasn't completed a flying lap yet (out-laps in Q,
-            //      first stint of FP). Rendering empty looks broken; "—"
-            //      tells the user the data isn't available yet.
-            //   4. Otherwise -> raw gap string from MV.
+            //   2. Raw gap from MV when present (race + replay sessions).
+            //   3. PB-differential synthesised from BestLapTime when MV's
+            //      top-level fields are empty (live qualifying). Matches MV's
+            //      cockpit display exactly: (myPB - aheadPB) for INT,
+            //      (myPB - leaderPB) for LDR. Three decimals, signed.
+            //   4. Em dash if even PB-diff can't be computed (driver hasn't
+            //      set a flying lap yet).
+            //
+            // We intentionally DO NOT inject "IN PIT" into the gap fields any
+            // more — MV's Live Timing keeps BEST/INT/LDR visible while a
+            // driver is in pit and only shows the "IN PIT" pill on the LAST
+            // column. Doing the same here means users keep their reference
+            // gaps when a chaser pits.
             if (s.Position == 1)
             {
                 row.GapToLeader = "\u2014";      // em dash
                 row.IntervalToAhead = "\u2014";
             }
-            else if (s.InPit)
-            {
-                row.GapToLeader = "IN PIT";
-                row.IntervalToAhead = "IN PIT";
-            }
             else
             {
-                row.GapToLeader = string.IsNullOrEmpty(s.GapToLeader) ? "\u2014" : s.GapToLeader;
-                row.IntervalToAhead = string.IsNullOrEmpty(s.IntervalToAhead) ? "\u2014" : s.IntervalToAhead;
+                string ldr = s.GapToLeader;
+                string intv = s.IntervalToAhead;
+
+                if (string.IsNullOrEmpty(ldr) || string.IsNullOrEmpty(intv))
+                {
+                    // Find the leader (snaps[0] after sort) and the car ahead
+                    // (the snap whose Position == s.Position - 1). We walk the
+                    // list because positions aren't always dense — drivers can
+                    // be missing or unranked.
+                    RowSnapshot? leader = snaps.Count > 0 ? snaps[0] : null;
+                    RowSnapshot? ahead = null;
+                    for (int k = i - 1; k >= 0; k--)
+                    {
+                        if (snaps[k].Position > 0 && snaps[k].Position < s.Position)
+                        {
+                            ahead = snaps[k];
+                            break;
+                        }
+                    }
+
+                    if (string.IsNullOrEmpty(ldr) && leader != null)
+                    {
+                        ldr = TryFormatGap(s.BestLapTime, leader.BestLapTime);
+                    }
+                    if (string.IsNullOrEmpty(intv) && ahead != null)
+                    {
+                        intv = TryFormatGap(s.BestLapTime, ahead.BestLapTime);
+                    }
+                }
+
+                row.GapToLeader = string.IsNullOrEmpty(ldr) ? "\u2014" : ldr;
+                row.IntervalToAhead = string.IsNullOrEmpty(intv) ? "\u2014" : intv;
             }
             row.InPit = s.InPit;
             row.Retired = s.Retired;
@@ -642,6 +683,44 @@ public sealed class LiveTimingClient : IDisposable
     // ---------------------------------------------------------------
     // Internal records
     // ---------------------------------------------------------------
+
+    /// <summary>
+    /// Formats the difference between two lap-time strings ("M:SS.fff" or
+    /// "SS.fff") as a signed gap string with three decimals — "+0.435",
+    /// "-0.012", "+1.234". Returns "" if either input is missing or
+    /// unparseable, so callers can fall back to the em-dash placeholder.
+    /// Matches the format used by the plugin's TimingDataDecoder so the
+    /// wheel HUD and picker show identical values.
+    /// </summary>
+    private static string TryFormatGap(string mine, string other)
+    {
+        if (!TryParseLapSeconds(mine, out double m)) return "";
+        if (!TryParseLapSeconds(other, out double o)) return "";
+        double d = m - o;
+        var nfi = System.Globalization.CultureInfo.InvariantCulture;
+        return (d >= 0 ? "+" : "") + d.ToString("0.000", nfi);
+    }
+
+    /// <summary>
+    /// Parses a lap-time string in either "M:SS.fff" or "SS.fff" form to a
+    /// double of seconds. Returns false on empty / malformed input. Uses
+    /// invariant culture so EU comma-decimals don't break parsing.
+    /// </summary>
+    private static bool TryParseLapSeconds(string lap, out double seconds)
+    {
+        seconds = 0;
+        if (string.IsNullOrWhiteSpace(lap)) return false;
+        var nfi = System.Globalization.CultureInfo.InvariantCulture;
+        int colon = lap.IndexOf(':');
+        if (colon < 0)
+        {
+            return double.TryParse(lap, System.Globalization.NumberStyles.Float, nfi, out seconds);
+        }
+        if (!int.TryParse(lap.AsSpan(0, colon), System.Globalization.NumberStyles.Integer, nfi, out int minutes)) return false;
+        if (!double.TryParse(lap.AsSpan(colon + 1), System.Globalization.NumberStyles.Float, nfi, out double secs)) return false;
+        seconds = minutes * 60.0 + secs;
+        return true;
+    }
 
     private sealed record DriverInfo(
         string RacingNumber,

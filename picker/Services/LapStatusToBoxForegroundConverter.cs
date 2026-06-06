@@ -32,6 +32,7 @@ internal sealed class LapStatusToBoxForegroundConverter : IValueConverter
             {
                 LapStatus.SessionBest => White,
                 LapStatus.PersonalBest => Black,
+                LapStatus.InPit => White,
                 _ => Default,
             };
         }

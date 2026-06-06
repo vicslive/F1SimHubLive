@@ -45,22 +45,15 @@ namespace F1SimHubLive.MultiViewer
 
             // Race / replay shape: GapToLeader is a top-level string and
             // IntervalToPositionAhead is { Value: "+0.401" }. Practice / Qualifying
-            // LIVE shape: those fields are absent and gaps live in Stats[0] as
-            // TimeDiffToFastest (= LDR) and TimeDifftoPositionAhead (= INT).
-            // Note MV's typo: lowercase 't' in "TimeDif*f*to*P*ositionAhead".
-            // Replays of non-race sessions reconstruct the race-shape fields,
-            // which is why this only manifests on live FP / Q sessions.
-            if (string.IsNullOrEmpty(snap.GapToLeader) || string.IsNullOrEmpty(snap.IntervalToAhead))
-            {
-                var stats0 = (driver["Stats"] as JArray)?.FirstOrDefault() as JObject;
-                if (stats0 != null)
-                {
-                    if (string.IsNullOrEmpty(snap.GapToLeader))
-                        snap.GapToLeader = (string?)stats0["TimeDiffToFastest"] ?? "";
-                    if (string.IsNullOrEmpty(snap.IntervalToAhead))
-                        snap.IntervalToAhead = (string?)stats0["TimeDifftoPositionAhead"] ?? "";
-                }
-            }
+            // LIVE shape: those fields are absent. We used to fall back to Stats[0]
+            // (TimeDiffToFastest / TimeDifftoPositionAhead) but Stats[N] freezes per
+            // Q segment — in Q3, Stats[0] = Q1 (ancient), Stats[1] = Q2 (frozen),
+            // Stats[2] = current Q3 (empty until the driver sets a lap). Reading
+            // Stats[0] gives us Q1 numbers forever, which is what bit the wheel
+            // HUD all of v1.3.x. MV's cockpit instead shows a personal-best
+            // differential in Q (myPB - aheadPB / myPB - leaderPB). We compute
+            // that ourselves below in TryComputeQGapsFromBests once FillAhead /
+            // FillLeader have populated AheadBestLapTime and LeaderBestLapTime.
 
             if (driver["Sectors"] is JArray sectors)
             {
@@ -105,9 +98,58 @@ namespace F1SimHubLive.MultiViewer
                 snap.LeaderCarNumber = leaderNum;
                 if (aheadDriver != null) FillAheadSectors(snap, aheadDriver);
                 if (leaderDriver != null) FillLeaderSectors(snap, leaderDriver);
+
+                // Q-mode gap fix: if MV didn't give us live INT/LDR from the
+                // race-shape fields, derive them from PB differential — matches
+                // what MultiViewer's own cockpit overlay shows in qualifying.
+                if (string.IsNullOrEmpty(snap.IntervalToAhead)
+                    && !string.IsNullOrEmpty(snap.BestLapTime)
+                    && !string.IsNullOrEmpty(snap.AheadBestLapTime))
+                {
+                    snap.IntervalToAhead = TryFormatGap(snap.BestLapTime, snap.AheadBestLapTime);
+                }
+                if (string.IsNullOrEmpty(snap.GapToLeader)
+                    && !string.IsNullOrEmpty(snap.BestLapTime)
+                    && !string.IsNullOrEmpty(snap.LeaderBestLapTime))
+                {
+                    snap.GapToLeader = TryFormatGap(snap.BestLapTime, snap.LeaderBestLapTime);
+                }
             }
 
             return snap;
+        }
+
+        /// <summary>
+        /// Parses two "M:SS.fff" lap-time strings and returns the differential
+        /// as a signed "+X.XXX" / "-X.XXX" string suitable for INT / LDR
+        /// display. Returns "" on parse failure so the dashboard formula
+        /// falls back to its "---" default.
+        /// </summary>
+        private static string TryFormatGap(string mine, string other)
+        {
+            if (!TryParseLapSeconds(mine, out double m)) return "";
+            if (!TryParseLapSeconds(other, out double o)) return "";
+            double diff = m - o;
+            // MV cockpit shows three decimals, sign included.
+            return (diff >= 0 ? "+" : "") + diff.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        private static bool TryParseLapSeconds(string lap, out double seconds)
+        {
+            seconds = 0;
+            if (string.IsNullOrWhiteSpace(lap)) return false;
+            // Format examples: "1:13.091", "59.847", "0:59.847"
+            int colon = lap.IndexOf(':');
+            if (colon < 0)
+            {
+                return double.TryParse(lap, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out seconds);
+            }
+            if (!int.TryParse(lap.Substring(0, colon), out int mins)) return false;
+            if (!double.TryParse(lap.Substring(colon + 1), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double secs)) return false;
+            seconds = mins * 60.0 + secs;
+            return true;
         }
 
         private static int ParsePos(string s) => int.TryParse(s, out var n) ? n : 0;

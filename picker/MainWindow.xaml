@@ -3,10 +3,10 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:svc="clr-namespace:F1SimHubLive.Picker.Services"
         xmlns:models="clr-namespace:F1SimHubLive.Picker.Models"
-        Title="F1SimHubLive — Driver Picker"
+        Title="F1SimHubLive"
         Icon="Assets/picker.ico"
-        Width="360" Height="740"
-        MinWidth="300" MinHeight="420"
+        Width="760" Height="960"
+        MinWidth="660" MinHeight="540"
         Background="#0F0F12"
         Foreground="#E8E8EC"
         FontFamily="Segoe UI"
@@ -15,6 +15,10 @@
 
     <Window.Resources>
         <svc:HexToBrushConverter x:Key="HexToBrush" />
+        <svc:LapStatusToBrushConverter x:Key="LapStatusToBrush" />
+        <svc:SegmentStatusToBrushConverter x:Key="SegmentStatusToBrush" />
+        <svc:PositionToTextConverter x:Key="PositionToText" />
+        <svc:TruthyToVisibilityConverter x:Key="TruthyToVisibility" />
 
         <Style x:Key="DriverButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#1A1A20" />
@@ -66,17 +70,33 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
-                <TextBlock Text="DRIVER PICKER" FontSize="11" FontWeight="SemiBold"
-                           Foreground="#7F7F8A" />
+                <TextBlock Text="F1SimHubLive" FontSize="13" FontWeight="Bold"
+                           Foreground="#E83A3A" />
                 <TextBlock x:Name="CurrentDriverText"
-                           Text="—" FontSize="20" FontWeight="Bold" Margin="0,2,0,0" />
+                           Text="—" FontSize="20" FontWeight="Bold" Margin="0,2,0,0"
+                           Foreground="#FFFFFF" />
             </StackPanel>
-            <CheckBox Grid.Column="1" x:Name="TopmostCheck"
-                      Content="📌 Pin" IsChecked="True"
-                      Foreground="#C8C8D0"
-                      VerticalAlignment="Center"
-                      Checked="TopmostCheck_Changed"
-                      Unchecked="TopmostCheck_Changed" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                        VerticalAlignment="Center">
+                <ToggleButton x:Name="LedToggle"
+                              Content="💡 LEDs"
+                              Foreground="#C8C8D0"
+                              Background="Transparent"
+                              BorderBrush="#2A2A33"
+                              BorderThickness="1"
+                              Padding="6,2"
+                              Margin="0,0,8,0"
+                              Cursor="Hand"
+                              ToolTip="Show shift-light range sliders"
+                              Checked="LedToggle_Changed"
+                              Unchecked="LedToggle_Changed" />
+                <CheckBox x:Name="TopmostCheck"
+                          Content="📌 Pin" IsChecked="True"
+                          Foreground="#C8C8D0"
+                          VerticalAlignment="Center"
+                          Checked="TopmostCheck_Changed"
+                          Unchecked="TopmostCheck_Changed" />
+            </StackPanel>
         </Grid>
 
         <!-- Status bar -->
@@ -88,46 +108,208 @@
                        TextTrimming="CharacterEllipsis" />
         </Border>
 
-        <!-- Footer -->
-        <TextBlock DockPanel.Dock="Bottom"
-                   x:Name="SettingsPathText"
-                   Text=""
-                   FontSize="10" Foreground="#55555F"
-                   TextTrimming="CharacterEllipsis"
-                   Margin="0,8,0,0"
-                   ToolTipService.ShowDuration="20000" />
+        <!-- Shift-light range sliders -->
+        <Border x:Name="SliderStrip"
+                DockPanel.Dock="Bottom" Background="#0A0A0E"
+                CornerRadius="6" Padding="10,8" Margin="0,8,0,0"
+                BorderBrush="#1F1F26" BorderThickness="1"
+                Visibility="Collapsed">
+            <StackPanel>
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Shift-light range" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#7F7F8A" />
+                    <TextBlock Grid.Column="1" x:Name="RangeSummary"
+                               Text=""
+                               FontSize="10" Foreground="#9898A4" />
+                </Grid>
 
-        <!-- Driver list -->
-        <ScrollViewer VerticalScrollBarVisibility="Auto"
-                      HorizontalScrollBarVisibility="Disabled">
-            <ItemsControl x:Name="DriverList">
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="60" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Start" FontSize="11" Foreground="#C8C8D0"
+                               VerticalAlignment="Center" />
+                    <Slider Grid.Column="1" x:Name="StartRpmSlider"
+                            Minimum="1000" Maximum="18000"
+                            TickFrequency="500" IsSnapToTickEnabled="True"
+                            SmallChange="100" LargeChange="500"
+                            VerticalAlignment="Center"
+                            Margin="6,0" />
+                    <TextBlock Grid.Column="2" x:Name="StartRpmText"
+                               Text="—"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="#E8E8EE"
+                               VerticalAlignment="Center"
+                               TextAlignment="Right" />
+                </Grid>
+
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="56" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="60" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="End" FontSize="11" Foreground="#C8C8D0"
+                               VerticalAlignment="Center" />
+                    <Slider Grid.Column="1" x:Name="EndRpmSlider"
+                            Minimum="1000" Maximum="18000"
+                            TickFrequency="500" IsSnapToTickEnabled="True"
+                            SmallChange="100" LargeChange="500"
+                            VerticalAlignment="Center"
+                            Margin="6,0" />
+                    <TextBlock Grid.Column="2" x:Name="EndRpmText"
+                               Text="—"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="#E8E8EE"
+                               VerticalAlignment="Center"
+                               TextAlignment="Right" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- Footer -->
+        <Grid DockPanel.Dock="Bottom" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="VersionText"
+                       Grid.Column="0"
+                       Text="v?.?.?"
+                       FontSize="14" FontWeight="SemiBold"
+                       Foreground="#C8C8D0"
+                       VerticalAlignment="Center"
+                       ToolTipService.ShowDuration="20000" />
+            <TextBlock x:Name="UpdateText"
+                       Grid.Column="1"
+                       Visibility="Collapsed"
+                       FontSize="14" FontWeight="SemiBold"
+                       VerticalAlignment="Center">
+                <Hyperlink x:Name="UpdateLink"
+                           Foreground="#F5C04C"
+                           TextDecorations="None"
+                           RequestNavigate="UpdateLink_RequestNavigate"
+                           NavigateUri="https://github.com/vicslive/F1SimHubLive/releases">
+                    <Run x:Name="UpdateRun" Text="▲ update available" />
+                </Hyperlink>
+            </TextBlock>
+        </Grid>
+
+        <!-- Hidden — kept so existing code that writes to SettingsPathText
+             (tooltip text) still compiles. The path now lives in
+             VersionText.ToolTip. -->
+        <TextBlock x:Name="SettingsPathText" Visibility="Collapsed" />
+
+        <!-- Driver list with vertical LED strip on the left.
+             Each driver row is 70 px tall (64 height + 6 bottom margin) so
+             two LEDs per row gives a clean 14-LED bar spanning roughly seven
+             drivers — which matches the picker's default visible roster. -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Vertical LED strip + live RPM readout.
+                 LEDs are fixed at 35 px tall so two LEDs line up exactly
+                 with one driver row (rows are 64 + 6 margin = 70 px). That
+                 means the full 14-LED bar spans the top 7 driver rows —
+                 anchored to the top so position 1 sits next to LED 14
+                 (the redline LED that lights last). -->
+            <DockPanel Grid.Column="0" LastChildFill="True"
+                       Width="26" Margin="0,0,8,0"
+                       VerticalAlignment="Top">
+                <Border DockPanel.Dock="Top"
+                        Background="#0A0A0E"
+                        CornerRadius="6" Padding="4,6"
+                        BorderBrush="#1F1F26" BorderThickness="1">
+                    <ItemsControl x:Name="LedStrip">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Vertical" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{Binding}"
+                                        Margin="0,1"
+                                        CornerRadius="2"
+                                        Height="35" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+                <TextBlock x:Name="RpmReadout"
+                           Text="—"
+                           FontSize="10" FontWeight="SemiBold"
+                           Foreground="#9898A4"
+                           TextAlignment="Center"
+                           Margin="0,4,0,0"
+                           ToolTip="Live RPM (MultiViewer telemetry)" />
+            </DockPanel>
+
+            <!-- Driver list -->
+            <ScrollViewer Grid.Column="1"
+                          VerticalScrollBarVisibility="Auto"
+                          HorizontalScrollBarVisibility="Disabled">
+                <ItemsControl x:Name="DriverList">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="{x:Type models:DriverEntry}">
+                    <DataTemplate DataType="{x:Type models:DriverTimingRow}">
                         <Button Style="{StaticResource DriverButtonStyle}"
                                 Margin="0,0,0,6"
                                 Click="DriverButton_Click"
-                                Tag="{Binding Number}">
+                                Tag="{Binding RacingNumber}">
                             <Grid Height="64">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="64" />
+                                    <!-- Position number -->
+                                    <ColumnDefinition Width="36" />
+                                    <!-- Team-colour TLA tile -->
+                                    <ColumnDefinition Width="60" />
+                                    <!-- Driver name + team -->
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
+                                    <!-- LAST + BEST lap times -->
+                                    <ColumnDefinition Width="95" />
+                                    <!-- INT + GAP -->
+                                    <ColumnDefinition Width="80" />
+                                    <!-- Tire badge + age -->
+                                    <ColumnDefinition Width="58" />
+                                    <!-- Pit count -->
+                                    <ColumnDefinition Width="34" />
+                                    <!-- Sector segment strip (3 sectors) -->
+                                    <ColumnDefinition Width="180" />
                                 </Grid.ColumnDefinitions>
-                                <!-- Team-colour TLA tile -->
-                                <Border Grid.Column="0"
+
+                                <!-- Position -->
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding Position, Converter={StaticResource PositionToText}}"
+                                           FontSize="22" FontWeight="Black"
+                                           Foreground="#E8E8EE"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+
+                                <!-- TLA tile -->
+                                <Border Grid.Column="1"
                                         Background="{Binding TeamColour, Converter={StaticResource HexToBrush}}"
-                                        CornerRadius="3,0,0,3">
+                                        CornerRadius="3"
+                                        Margin="0,4">
                                     <TextBlock Text="{Binding Tla}"
                                                Foreground="White"
-                                               FontSize="24" FontWeight="Black"
+                                               FontSize="20" FontWeight="Black"
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center" />
                                 </Border>
-                                <!-- Name block -->
-                                <StackPanel Grid.Column="1" VerticalAlignment="Center"
+
+                                <!-- Name + team -->
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center"
                                             Margin="10,0,4,0">
-                                    <TextBlock Text="{Binding DisplayLastName}"
-                                               FontSize="16" FontWeight="Bold"
+                                    <TextBlock Text="{Binding LastName}"
+                                               FontSize="14" FontWeight="Bold"
                                                Foreground="#FFFFFF"
                                                TextTrimming="CharacterEllipsis" />
                                     <TextBlock Text="{Binding TeamName}"
@@ -136,28 +318,214 @@
                                                TextTrimming="CharacterEllipsis"
                                                Margin="0,1,0,0" />
                                 </StackPanel>
-                                <!-- Big number + points stack -->
-                                <StackPanel Grid.Column="2"
-                                            HorizontalAlignment="Right"
-                                            VerticalAlignment="Center"
-                                            Margin="0,0,12,0">
-                                    <TextBlock Text="{Binding Number}"
-                                               FontSize="28" FontWeight="Black"
-                                               Foreground="#E8E8EE"
-                                               HorizontalAlignment="Right"
-                                               LineHeight="30"
-                                               LineStackingStrategy="BlockLineHeight" />
-                                    <TextBlock Text="{Binding DriverPointsDisplay}"
+
+                                <!-- LAST + BEST lap times stack -->
+                                <StackPanel Grid.Column="3" VerticalAlignment="Center"
+                                            Margin="0,0,4,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="30" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="LAST"
+                                                   FontSize="9" FontWeight="SemiBold"
+                                                   Foreground="#6F6F7A"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding LastLapTime}"
+                                                   FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{Binding LastLapStatus, Converter={StaticResource LapStatusToBrush}}"
+                                                   TextAlignment="Right"
+                                                   FontFamily="Consolas" />
+                                    </Grid>
+                                    <Grid Margin="0,2,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="30" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="BEST"
+                                                   FontSize="9" FontWeight="SemiBold"
+                                                   Foreground="#6F6F7A"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding BestLapTime}"
+                                                   FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{Binding BestLapStatus, Converter={StaticResource LapStatusToBrush}}"
+                                                   TextAlignment="Right"
+                                                   FontFamily="Consolas" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <!-- INT + GAP stack -->
+                                <StackPanel Grid.Column="4" VerticalAlignment="Center"
+                                            Margin="0,0,4,0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="24" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="INT"
+                                                   FontSize="9" FontWeight="SemiBold"
+                                                   Foreground="#6F6F7A"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding IntervalToAhead}"
+                                                   FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="#C8C8D0"
+                                                   TextAlignment="Right"
+                                                   FontFamily="Consolas" />
+                                    </Grid>
+                                    <Grid Margin="0,2,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="24" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="GAP"
+                                                   FontSize="9" FontWeight="SemiBold"
+                                                   Foreground="#6F6F7A"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding GapToLeader}"
+                                                   FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="#C8C8D0"
+                                                   TextAlignment="Right"
+                                                   FontFamily="Consolas" />
+                                    </Grid>
+                                </StackPanel>
+
+                                <!-- Tire badge + age -->
+                                <StackPanel Grid.Column="5"
+                                            Orientation="Vertical"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                    <Border Background="{Binding TireCompoundColor, Converter={StaticResource HexToBrush}}"
+                                            Width="30" Height="30"
+                                            CornerRadius="15"
+                                            BorderBrush="#0A0A0E"
+                                            BorderThickness="2">
+                                        <TextBlock Text="{Binding TireCompoundLetter}"
+                                                   Foreground="#0A0A0E"
+                                                   FontSize="14" FontWeight="Black"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                    </Border>
+                                    <TextBlock Text="{Binding TireAge, StringFormat='L{0}'}"
                                                FontSize="10" FontWeight="SemiBold"
                                                Foreground="#B8B8C4"
-                                               HorizontalAlignment="Right"
-                                               Margin="0,-2,0,0" />
+                                               HorizontalAlignment="Center"
+                                               Margin="0,1,0,0" />
                                 </StackPanel>
+
+                                <!-- Pit count -->
+                                <StackPanel Grid.Column="6"
+                                            Orientation="Vertical"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"
+                                            Visibility="{Binding PitStopCount, Converter={StaticResource TruthyToVisibility}}">
+                                    <TextBlock Text="PIT"
+                                               FontSize="9" FontWeight="SemiBold"
+                                               Foreground="#6F6F7A"
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock Text="{Binding PitStopCount}"
+                                               FontSize="16" FontWeight="Black"
+                                               Foreground="#E8E8EE"
+                                               HorizontalAlignment="Center"
+                                               LineHeight="18"
+                                               LineStackingStrategy="BlockLineHeight" />
+                                </StackPanel>
+
+                                <!-- Sector segment strip -->
+                                <Grid Grid.Column="7" Margin="6,8,4,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <!-- S1 -->
+                                    <ItemsControl Grid.Column="0" Grid.Row="0"
+                                                  ItemsSource="{Binding Sectors[0].Segments}"
+                                                  Margin="0,0,2,0">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Rows="1" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{Binding Converter={StaticResource SegmentStatusToBrush}}"
+                                                        Margin="0,0,1,0"
+                                                        CornerRadius="1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Grid.Column="0" Grid.Row="1"
+                                               Text="{Binding Sectors[0].Time}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[0].Status, Converter={StaticResource LapStatusToBrush}}"
+                                               FontFamily="Consolas"
+                                               TextAlignment="Center"
+                                               Margin="0,2,2,0" />
+
+                                    <!-- S2 -->
+                                    <ItemsControl Grid.Column="1" Grid.Row="0"
+                                                  ItemsSource="{Binding Sectors[1].Segments}"
+                                                  Margin="0,0,2,0">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Rows="1" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{Binding Converter={StaticResource SegmentStatusToBrush}}"
+                                                        Margin="0,0,1,0"
+                                                        CornerRadius="1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Grid.Column="1" Grid.Row="1"
+                                               Text="{Binding Sectors[1].Time}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[1].Status, Converter={StaticResource LapStatusToBrush}}"
+                                               FontFamily="Consolas"
+                                               TextAlignment="Center"
+                                               Margin="0,2,2,0" />
+
+                                    <!-- S3 -->
+                                    <ItemsControl Grid.Column="2" Grid.Row="0"
+                                                  ItemsSource="{Binding Sectors[2].Segments}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Rows="1" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="{Binding Converter={StaticResource SegmentStatusToBrush}}"
+                                                        Margin="0,0,1,0"
+                                                        CornerRadius="1" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Grid.Column="2" Grid.Row="1"
+                                               Text="{Binding Sectors[2].Time}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="{Binding Sectors[2].Status, Converter={StaticResource LapStatusToBrush}}"
+                                               FontFamily="Consolas"
+                                               TextAlignment="Center"
+                                               Margin="0,2,0,0" />
+                                </Grid>
                             </Grid>
                         </Button>
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
+        </Grid>
     </DockPanel>
 </Window>

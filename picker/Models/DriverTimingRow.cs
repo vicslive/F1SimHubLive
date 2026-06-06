@@ -119,6 +119,17 @@ public sealed class DriverTimingRow : INotifyPropertyChanged
         set => SetField(ref _pitStopCount, value);
     }
 
+    private int _speedKmh;
+    /// <summary>
+    /// Current speed in km/h from MultiViewer CarData channel "2".
+    /// 0 when the driver isn't on track or telemetry isn't flowing.
+    /// </summary>
+    public int SpeedKmh
+    {
+        get => _speedKmh;
+        set => SetField(ref _speedKmh, value);
+    }
+
     private bool _isCurrent;
     /// <summary>True for the driver currently written in settings.json.</summary>
     public bool IsCurrent
@@ -172,6 +183,31 @@ public sealed class SectorView : INotifyPropertyChanged
     {
         get => _status;
         set => SetField(ref _status, value);
+    }
+
+    private string _bestTime = "";
+    /// <summary>
+    /// Driver's personal best for this sector this session (formatted
+    /// e.g. "27.949"). Empty until the driver has set at least one
+    /// valid time for the sector.
+    /// </summary>
+    public string BestTime
+    {
+        get => _bestTime;
+        set => SetField(ref _bestTime, value);
+    }
+
+    private LapStatus _bestStatus;
+    /// <summary>
+    /// Status for the personal-best sector time:
+    ///   SessionBest = also the overall fastest in the field (purple)
+    ///   PersonalBest = best for this driver only (yellow)
+    ///   None = no best yet
+    /// </summary>
+    public LapStatus BestStatus
+    {
+        get => _bestStatus;
+        set => SetField(ref _bestStatus, value);
     }
 
     /// <summary>

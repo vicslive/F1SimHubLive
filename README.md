@@ -426,67 +426,42 @@ The dashboard uses **two** flag indicators that stay in sync:
 
 ---
 
-## Driver Picker (mid-race driver switching)
+## Driver Picker (mid-race driver switching + live timing)
 
 Hamilton crashes on lap 23. You want to flip the wheel to Antonelli without
 stopping SimHub, editing JSON, and sitting through MultiViewer's ~30-second
-warm-up after a restart. That's what the **F1SimHubLive Driver Picker** is for.
+warm-up after a restart. That's what the **F1SimHubLive Driver Picker** is for
+— plus, since v1.2.0, it doubles as a full-screen live-timing replica of
+MultiViewer with per-driver speed, lap times, gap/interval, tyre stints, pit
+counts, and PB/SB-coloured sector strips.
 
-<!-- Screenshot to be added after the next release: docs/screenshots/picker.png -->
+![Driver Picker — full live-timing view](docs/screenshots/picker-overview.png)
 
-### Visual layout
+**Full UI reference: [PICKER.md](PICKER.md)** — every element, every colour,
+every interaction, plus screenshots and troubleshooting.
 
-```
-┌──────────────────────────────────┐
-│ F1SimHubLive — Driver Picker  ⌄ │
-├──────────────────────────────────┤
-│ ┌────┐ Lando NORRIS              │
-│ │NOR │ McLaren · 374 pts      4  │  ← team-coloured tile + name/team/points + race number
-│ └────┘                           │
-│ ┌────┐ Oscar PIASTRI             │
-│ │PIA │ McLaren · 356 pts     81  │  ← same team paired, ordered by points
-│ └────┘                           │
-│ ┌────┐ George RUSSELL            │
-│ │RUS │ Mercedes · 245 pts    63  │
-│ └────┘                           │
-│ ┌────┐ Kimi ANTONELLI            │
-│ │ANT │ Mercedes · 64 pts     12  │
-│ └────┘                           │
-│   …                              │
-│ ┌────┐ Lewis HAMILTON            │  ← currently active driver: coloured border
-│ │HAM │ Ferrari · 142 pts     44  │
-│ └────┘                           │
-└──────────────────────────────────┘
-```
+### What it does (in 30 seconds)
 
-Click any driver tile. The row flashes green for 500ms. About one second later
-your wheel is showing that driver's RPM, gear, speed, lap, gap, sectors —
-without SimHub or MultiViewer being touched.
-
-### What it does
-
-- Standalone WPF window, ~320×640, always-on-top by default. Designed to live
-  in the corner of a second monitor during the race.
-- Polls MultiViewer's `DriverList` every 5 seconds, so it always shows the
-  current grid. Bundled fallback list when MV is unreachable.
-- Drivers are **grouped by team**, and **teams are ordered by current
-  Constructors' Championship position** (from MultiViewer's
-  `ChampionshipPrediction`). Within a team, the higher-points driver is
-  listed first. Each driver's current points tally is shown subtly under
-  their racing number.
-- One click on a driver writes the new `DriverNumber` to `settings.json`. The
-  plugin's `FileSystemWatcher` picks up the change within ~250ms and the wheel
-  flips to the new driver inside about a second — **no SimHub restart, no MV
-  warm-up wait**.
-- The currently-active driver row is highlighted with a coloured border.
-  Hover any other driver and the row glows; click and it blinks green for
-  500ms as the confirm.
-- Graceful fallback to race-number order when standings are unavailable
-  (qualifying-only sessions, MV offline, season-opening race).
+- Standalone WPF window, ~860 tall, scroll-anywhere driver list, dark
+  Windows 11 chrome, always-on-top by default.
+- Header shows the currently-active driver and a live 15-LED RPM bar that
+  mirrors the wheel.
+- Driver list is sorted by current race position (from MultiViewer's
+  `TimingData`), with team-coloured TLA tiles, live speed in km/h, last and
+  best lap times, interval to car ahead and gap to leader, current tyre
+  compound and stint age, pit count, and a three-row sector strip
+  (segments / current sector time / personal-best sector time) with
+  authoritative PB/SB colour coding from MV's `TimingStats` endpoint.
+- **One click on any driver** writes the new `DriverNumber` to `settings.json`.
+  The plugin's `FileSystemWatcher` picks up the change within ~250ms and the
+  wheel flips to the new driver inside about a second — **no SimHub restart,
+  no MV warm-up wait**.
+- Graceful fallback to a bundled 2025 grid when MV is offline so you can still
+  hot-swap drivers in practice / replays.
 
 ### Launching it
 
-The v1.1.0 installer creates an All-Users Start Menu shortcut:
+The v1.1.0+ installer creates an All-Users Start Menu shortcut:
 
 ```
 Start Menu → F1SimHubLive → F1SimHubLive Driver Picker

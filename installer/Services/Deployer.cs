@@ -26,9 +26,10 @@ public sealed class DeployOptions
 
     /// <summary>
     /// Written to settings.json as <c>AutoLaunchPicker</c>. The plugin reads this
-    /// at Init and spawns the picker on every SimHub start when true. Off by
-    /// default because the picker requests administrator rights and would
-    /// trigger a UAC prompt for users who don't run SimHub elevated.
+    /// at Init and spawns the picker on every SimHub start when true. Default
+    /// is off, but as of v1.3.0 the picker runs as <c>asInvoker</c> (no UAC)
+    /// and reads/writes its config from <c>%APPDATA%\F1SimHubLive\</c>, so
+    /// turning this on is fully unattended — no UAC prompt on SimHub launch.
     /// </summary>
     public bool AutoLaunchPicker { get; init; } = false;
 
@@ -197,25 +198,49 @@ public sealed class Deployer
 
     private void WriteSettings(DeployOptions opts)
     {
-        var settingsPath = Path.Combine(opts.SimHubInstallDir, "F1SimHubLive.Settings.json");
+        // v1.3.0+: settings file lives per-user under %APPDATA%\F1SimHubLive\,
+        // but the installer runs elevated and we have no clean way to write to
+        // a non-admin user's APPDATA. So the installer drops a *seed* file in
+        // the machine-wide PROGRAMDATA location. The plugin and picker both
+        // copy that seed into the per-user APPDATA on first launch (after which
+        // the per-user copy becomes authoritative). See SettingsPathResolver.cs.
+        string programDataDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "F1SimHubLive");
+        Directory.CreateDirectory(programDataDir);
+        var settingsPath = Path.Combine(programDataDir, "F1SimHubLive.Settings.json");
 
-        // Preserve user-tunable fields when upgrading. The installer UI only
-        // surfaces a handful of choices (driver, source, MV endpoint, picker
-        // checkbox); everything else lives in settings.json and is edited by
-        // hand or by the picker itself. Blindly rewriting the file every install
-        // wiped values like AutoLaunchPicker back to installer defaults — see
-        // .signing-runbook.md "Action items deferred" and the 2026-06-05
+        // Preservation: look at every place an existing F1SimHubLive install
+        // might already have settings, in order of authoritativeness:
+        //   1. The elevated user's per-user APPDATA (post-v1.3.0)
+        //   2. The PROGRAMDATA seed from a prior v1.3.x install
+        //   3. The legacy in-SimHub-dir file (v1.2.x and earlier)
+        // We use the FIRST one found to preserve user-tunable fields like
+        // AutoLaunchPicker, OutputHz, RpmShiftLight*. This stops the installer
+        // from blowing user customizations back to wizard defaults on upgrade.
+        // See .signing-runbook.md "Action items deferred" and the 2026-06-05
         // working-memory entry.
+        string[] preservationCandidates =
+        {
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "F1SimHubLive",
+                "F1SimHubLive.Settings.json"),
+            settingsPath,
+            Path.Combine(opts.SimHubInstallDir, "F1SimHubLive.Settings.json"),
+        };
+
         bool? existingAutoLaunch = null;
         int? existingOutputHz = null;
         int? existingRenderDelayMs = null;
         int? existingRpmShiftStart = null;
         int? existingRpmShiftEnd = null;
-        if (File.Exists(settingsPath))
+        foreach (var candidate in preservationCandidates)
         {
+            if (!File.Exists(candidate)) continue;
             try
             {
-                using var doc = JsonDocument.Parse(File.ReadAllText(settingsPath));
+                using var doc = JsonDocument.Parse(File.ReadAllText(candidate));
                 var root = doc.RootElement;
                 if (root.TryGetProperty("AutoLaunchPicker", out var a))
                 {
@@ -235,16 +260,17 @@ public sealed class Deployer
                     && se.ValueKind == JsonValueKind.Number
                     && se.TryGetInt32(out var endRpm)) existingRpmShiftEnd = endRpm;
 
-                L("Existing settings.json found — preserving "
+                L($"Existing settings found at '{candidate}' — preserving "
                     + $"AutoLaunchPicker={existingAutoLaunch?.ToString() ?? "(unset)"}, "
                     + $"OutputHz={existingOutputHz?.ToString() ?? "(unset)"}, "
                     + $"RenderDelayMs={existingRenderDelayMs?.ToString() ?? "(unset)"}, "
                     + $"RpmShiftLightStartRpm={existingRpmShiftStart?.ToString() ?? "(unset)"}, "
                     + $"RpmShiftLightEndRpm={existingRpmShiftEnd?.ToString() ?? "(unset)"}");
+                break;
             }
             catch (Exception ex)
             {
-                L($"Existing settings.json could not be parsed ({ex.GetType().Name}: {ex.Message}) — writing fresh defaults.");
+                L($"Existing settings at '{candidate}' could not be parsed ({ex.GetType().Name}: {ex.Message}) — trying next candidate.");
             }
         }
 
@@ -263,6 +289,7 @@ public sealed class Deployer
         };
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(settingsPath, json, new UTF8Encoding(false));
+        L($"Wrote settings seed -> {settingsPath}");
     }
 
     /// <summary>

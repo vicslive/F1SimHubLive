@@ -5,7 +5,8 @@ Companion document to the [main README](README.md). This is the *user's guide* t
 > **Path:** `C:\Program Files (x86)\SimHub\F1SimHubLive-Picker.exe`
 > **Window size:** 860 × 960 (resizable, MinWidth=760, MinHeight=540)
 > **Always-on-top:** toggle via the 📌 Pin button in the header
-> **Privileges:** runs as administrator (UAC prompt on launch) — required to write `settings.json` under `Program Files (x86)\SimHub\`
+> **Privileges:** runs as `asInvoker` — **no UAC prompt, ever** (v1.3.0+)
+> **Settings file:** `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json`
 
 <!-- Screenshot to be added: docs/screenshots/picker-overview.png — full window with live MV session, annotated callouts -->
 
@@ -170,8 +171,8 @@ The driver currently selected (i.e. the one your wheel is showing) gets a colour
 ### Single click on a driver row
 
 1. The row flashes green for ~500 ms (visual confirm).
-2. The picker writes `DriverNumber` = that driver's racing number to `C:\Program Files (x86)\SimHub\F1SimHubLive.Settings.json`.
-3. SimHub's `FileSystemWatcher` picks up the file change within ~250 ms.
+2. The picker writes `DriverNumber` = that driver's racing number to `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json`.
+3. SimHub's `FileSystemWatcher` (also pointed at the same per-user path) picks up the file change within ~250 ms.
 4. The wheel's LEDs, speed, gear, RPM, gap, sectors swap to the new driver inside ~1 second total.
 
 **No SimHub restart, no MultiViewer re-warm-up.**
@@ -217,7 +218,7 @@ The picker doesn't have its own settings file. Behaviour is controlled by two fi
 | Field | Default | Effect |
 |---|---|---|
 | `DriverNumber` | `"44"` | The currently-active driver. Picker writes here on click. Plugin watches the file and hot-reloads. |
-| `AutoLaunchPicker` | `false` | When `true`, the plugin spawns the picker every time SimHub starts. Off by default because the picker is admin-manifested and triggers a UAC prompt each launch. The Start Menu shortcut is the recommended manual-launch path. |
+| `AutoLaunchPicker` | `false` | When `true`, the plugin spawns the picker every time SimHub starts. As of v1.3.0 this is fully unattended — the picker runs as `asInvoker` (no UAC), so it just opens silently when SimHub does. Safe to leave on permanently. |
 
 ---
 
@@ -237,11 +238,11 @@ The picker doesn't have its own settings file. Behaviour is controlled by two fi
 - Either no PB has been set yet this session, or `TimingStats` isn't being served (older MV build). Bottom row of the sector strip will also be empty in that case. Update MV to the latest.
 
 **Click doesn't change the wheel:**
-- The row flash means the click was registered. If `settings.json` didn't change, the picker hit a permission error — re-run elevated (Start Menu shortcut path inherits the admin manifest).
-- If `settings.json` DID change but the plugin didn't react, check SimHub's plugin log for `[F1SimHubLivePlugin]` — should show `Driver changed: 44 → 12`. No line means `FileSystemWatcher` didn't fire; verify both the plugin and picker resolve to the same `settings.json` path under `Program Files (x86)\SimHub\`.
+- The row flash means the click was registered. If `settings.json` didn't change, check `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json` — antivirus or Controlled Folder Access can block writes to AppData.
+- If `settings.json` DID change but the plugin didn't react, check SimHub's plugin log for `[F1SimHubLive]` — should show `Driver changed: 44 → 12`. Both plugin and picker resolve via `SettingsPathResolver` to the same per-user path, so a path mismatch should be impossible.
 
-**UAC prompt every launch is annoying:**
-- Unavoidable without dropping the `requireAdministrator` manifest, which the picker needs to write to `Program Files (x86)\SimHub\settings.json`. The clean fix is to leave `AutoLaunchPicker = false` and just accept one UAC per intentional launch.
+**Stale settings after upgrading from v1.2.x:**
+- v1.3.0 moved the settings file from `C:\Program Files (x86)\SimHub\` to `%APPDATA%\F1SimHubLive\`. The first time either the picker or the plugin runs after upgrade, the legacy file is automatically migrated to the new per-user location (preserving driver number, RPM shift range, MV URL, etc.). The legacy file is left in place — it's no longer used and can be deleted manually if desired.
 
 **Times look wrong / different from MultiViewer's leaderboard:**
 - This shouldn't happen as of v1.2.4, which sources `BestSectors` and `PersonalBestLapTime` directly from MV's `TimingStats` endpoint. If you see a divergence, file an issue with a screenshot of both windows side-by-side.
@@ -258,6 +259,7 @@ The picker doesn't have its own settings file. Behaviour is controlled by two fi
 | **v1.2.2** | LED strip relocated from left vertical column into the header bar (horizontal). LED order corrected (green → red → blue runs left → right). |
 | **v1.2.3** | Per-driver speed column (km/h) added. Sector strip restructured to three rows (segments / current / best). Row height 64 → 72; window 760 → 860 wide. |
 | **v1.2.4** | `TimingStats` endpoint wired up — PB / SB colours on lap and sector times now match MV exactly, even when joining mid-session. |
+| **v1.3.0** | Picker manifest changed from `requireAdministrator` to `asInvoker` — **no UAC prompt on launch, ever.** Settings file moved from `C:\Program Files (x86)\SimHub\F1SimHubLive.Settings.json` to `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json`; automatic one-shot migration from the legacy path on first run. `AutoLaunchPicker = true` is now fully unattended. |
 
 ---
 

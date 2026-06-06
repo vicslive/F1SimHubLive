@@ -35,9 +35,10 @@ namespace F1SimHubLive
         /// <summary>
         /// When true, the plugin launches F1SimHubLive-Picker.exe (deployed next
         /// to the plugin DLL) on Init so the driver-picker window pops up with
-        /// SimHub. The picker manifest requests administrator, so unattended
-        /// SimHub starts will trigger a UAC prompt — leave this off unless you
-        /// always start SimHub elevated, and use the Start Menu shortcut otherwise.
+        /// SimHub. As of v1.3.0 the picker runs as <c>asInvoker</c> (no UAC
+        /// prompt) and writes config to <c>%APPDATA%\F1SimHubLive\</c>, so
+        /// auto-launch is now safe to leave on without nagging the user on
+        /// every SimHub start.
         /// </summary>
         public bool AutoLaunchPicker { get; set; } = false;
 

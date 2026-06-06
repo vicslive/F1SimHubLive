@@ -196,11 +196,11 @@ public partial class MainWindow : Window
 
     private static string DefaultSettingsPath()
     {
-        // SimHub default install lives in Program Files (x86)\SimHub. The plugin
-        // computes its settings path the same way (assembly directory), so as
-        // long as we're hitting the default install we match.
-        string pf86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-        return Path.Combine(pf86, "SimHub", "F1SimHubLive.Settings.json");
+        // v1.3.0+: per-user settings live in %APPDATA%\F1SimHubLive\. Resolver
+        // handles one-shot migration from legacy locations (PROGRAMDATA seed
+        // written by the installer, or Program Files (x86)\SimHub\ from older
+        // versions). The plugin uses the same resolver.
+        return SettingsPathResolver.Resolve(msg => System.Diagnostics.Debug.WriteLine(msg));
     }
 
     private void UpdateCurrentDriverText()
@@ -236,7 +236,10 @@ public partial class MainWindow : Window
         {
             MessageBox.Show(this,
                 "Could not write the settings file — access denied.\n\n" +
-                "Make sure the picker is running as administrator (right-click → Run as administrator).\n\n" +
+                "F1SimHubLive's settings file lives in your per-user AppData " +
+                "folder. If something is blocking writes there (antivirus, " +
+                "Controlled Folder Access, sync engine), the picker can't " +
+                "switch drivers.\n\n" +
                 $"Path:\n{_settingsPath}",
                 "F1SimHubLive — Driver Picker",
                 MessageBoxButton.OK,

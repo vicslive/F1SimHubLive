@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:svc="clr-namespace:F1SimHubLive.Picker.Services"
         xmlns:models="clr-namespace:F1SimHubLive.Picker.Models"
-        Title="F1SimHubLive — Driver Picker"
+        Title="F1SimHubLive"
         Icon="Assets/picker.ico"
         Width="360" Height="960"
         MinWidth="300" MinHeight="540"
@@ -66,10 +66,11 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
-                <TextBlock Text="DRIVER PICKER" FontSize="11" FontWeight="SemiBold"
-                           Foreground="#7F7F8A" />
+                <TextBlock Text="F1SimHubLive" FontSize="13" FontWeight="Bold"
+                           Foreground="#E83A3A" />
                 <TextBlock x:Name="CurrentDriverText"
-                           Text="—" FontSize="20" FontWeight="Bold" Margin="0,2,0,0" />
+                           Text="—" FontSize="20" FontWeight="Bold" Margin="0,2,0,0"
+                           Foreground="#FFFFFF" />
             </StackPanel>
             <CheckBox Grid.Column="1" x:Name="TopmostCheck"
                       Content="📌 Pin" IsChecked="True"

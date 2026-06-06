@@ -6,6 +6,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+### Fixed
+- **Wheel dashboard: `INT` and `LDR` panels now show the actual interval / leader gap.** Both panel value fields (`AheadRank` for INT, `BehindRank` for LDR) in `F1RaceSim_GSIFPEV2.djson` were bound to the *picked driver's own* `BestLapTime` and `LastLapTime` respectively — so during a race the INT and LDR squares both displayed Hamilton's own last lap (e.g. `1:13.777`) and looked identical to the `LAST` square next to the @vicslive signature. Vic noticed this during the live Q replay: picker correctly showed `LDR 1:13.293` / `INT 1L13.630` for Hamilton, but the wheel showed `LAST = INT = LDR = 1:13.777`. Cause: the `DriverAhead` / `DriverBehind` mini-panels were originally generic widgets and the inner value bindings never got rewired when the labels were repurposed to "INT" and "LDR". Fix: bind `AheadRank` to `$prop('F1SimHubLivePlugin.IntervalToAhead')` (returns `'---'` when our driver is P1, with empty fallback also `'---'`) and `BehindRank` to `$prop('F1SimHubLivePlugin.GapToLeader')` (returns `'LEADER'` when our driver is P1, empty fallback `'---'`). The colored `+0.147` / `+0.484` gap badges in the narrow column to the right of each panel were already correct (bound to `AheadGap` / `Behind Gap` with `FormatString:"0.0"`, which works for race-mode decimal gaps but mangles Q-mode `1:13.293`-format gaps — leaving that as a separate issue). Requires a SimHub restart for the patched template to load. (`dashboards/F1RaceSim_GSIFPEV2/F1RaceSim_GSIFPEV2.djson`, mirrored to `installer/Assets/F1RaceSim_GSIFPEV2.djson`.)
+
 ## [1.3.5] — 2026-06-06
 
 ### Changed

@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using System.Windows.Navigation;
 using System.Windows.Threading;
@@ -298,6 +299,18 @@ public partial class MainWindow : Window
     private void TopmostCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (sender is CheckBox cb) Topmost = cb.IsChecked == true;
+    }
+
+    private void LedToggle_Changed(object sender, RoutedEventArgs e)
+    {
+        // Show / hide the shift-light range strip without resizing the
+        // window — the DockPanel reclaims the space automatically.
+        if (SliderStrip != null && sender is ToggleButton tb)
+        {
+            SliderStrip.Visibility = tb.IsChecked == true
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
     }
 
     private static string GetDisplayVersion()

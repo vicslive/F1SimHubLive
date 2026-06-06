@@ -72,12 +72,27 @@
                            Text="—" FontSize="20" FontWeight="Bold" Margin="0,2,0,0"
                            Foreground="#FFFFFF" />
             </StackPanel>
-            <CheckBox Grid.Column="1" x:Name="TopmostCheck"
-                      Content="📌 Pin" IsChecked="True"
-                      Foreground="#C8C8D0"
-                      VerticalAlignment="Center"
-                      Checked="TopmostCheck_Changed"
-                      Unchecked="TopmostCheck_Changed" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                        VerticalAlignment="Center">
+                <ToggleButton x:Name="LedToggle"
+                              Content="💡 LEDs"
+                              Foreground="#C8C8D0"
+                              Background="Transparent"
+                              BorderBrush="#2A2A33"
+                              BorderThickness="1"
+                              Padding="6,2"
+                              Margin="0,0,8,0"
+                              Cursor="Hand"
+                              ToolTip="Show shift-light range sliders"
+                              Checked="LedToggle_Changed"
+                              Unchecked="LedToggle_Changed" />
+                <CheckBox x:Name="TopmostCheck"
+                          Content="📌 Pin" IsChecked="True"
+                          Foreground="#C8C8D0"
+                          VerticalAlignment="Center"
+                          Checked="TopmostCheck_Changed"
+                          Unchecked="TopmostCheck_Changed" />
+            </StackPanel>
         </Grid>
 
         <!-- Status bar -->
@@ -90,9 +105,11 @@
         </Border>
 
         <!-- Shift-light range sliders -->
-        <Border DockPanel.Dock="Bottom" Background="#0A0A0E"
+        <Border x:Name="SliderStrip"
+                DockPanel.Dock="Bottom" Background="#0A0A0E"
                 CornerRadius="6" Padding="10,8" Margin="0,8,0,0"
-                BorderBrush="#1F1F26" BorderThickness="1">
+                BorderBrush="#1F1F26" BorderThickness="1"
+                Visibility="Collapsed">
             <StackPanel>
                 <Grid Margin="0,0,0,2">
                     <Grid.ColumnDefinitions>

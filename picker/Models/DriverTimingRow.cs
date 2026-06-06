@@ -246,7 +246,26 @@ public sealed class SectorView : INotifyPropertyChanged
     ///   2051 = pit (blue)
     ///   2064 = green (improving)
     /// </summary>
-    public ObservableCollection<int> Segments { get; } = new();
+    public ObservableCollection<int> Segments { get; }
+
+    /// <summary>
+    /// Number of mini-sectors in this sector. Tracked as a separate
+    /// observable property (instead of binding directly to
+    /// <c>Segments.Count</c>) because <see cref="ObservableCollection{T}"/>
+    /// does not raise PropertyChanged for its <c>Count</c> — only
+    /// CollectionChanged. The XAML uses this for proportional sector-strip
+    /// column widths so the per-segment bar pixel-width stays uniform
+    /// across S1/S2/S3 even though the underlying segment counts differ
+    /// per track (e.g. Imola S2 has 7 mini-sectors while S1 has 3).
+    /// </summary>
+    public int SegmentCount => Segments.Count;
+
+    public SectorView()
+    {
+        Segments = new ObservableCollection<int>();
+        Segments.CollectionChanged += (_, _) =>
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SegmentCount)));
+    }
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {

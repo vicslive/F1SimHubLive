@@ -66,7 +66,13 @@
         <!-- Header -->
         <Grid DockPanel.Dock="Top" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
+                <!-- Driver / app label block -->
+                <ColumnDefinition Width="Auto" />
+                <!-- Horizontal LED strip + live RPM readout, fills the middle.
+                     Replaces the old left-side vertical LED column so the
+                     driver list can extend the full width of the window. -->
                 <ColumnDefinition Width="*" />
+                <!-- Toggle buttons -->
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
@@ -76,7 +82,49 @@
                            Text="—" FontSize="20" FontWeight="Bold" Margin="0,2,0,0"
                            Foreground="#FFFFFF" />
             </StackPanel>
-            <StackPanel Grid.Column="1" Orientation="Horizontal"
+
+            <!-- Horizontal LED bar + live RPM readout.
+                 LEDs render left-to-right (LED 1 .. LED 14, redline last on
+                 the right) the way the wheel actually lights up. The numeric
+                 RPM sits to the right of the bar so the eye can read it
+                 without losing the visual cue. -->
+            <Border Grid.Column="1"
+                    Background="#0A0A0E"
+                    CornerRadius="6" Padding="6,4"
+                    BorderBrush="#1F1F26" BorderThickness="1"
+                    Margin="16,4,16,0"
+                    VerticalAlignment="Center">
+                <DockPanel LastChildFill="True">
+                    <TextBlock x:Name="RpmReadout"
+                               DockPanel.Dock="Right"
+                               Text="—"
+                               FontSize="11" FontWeight="SemiBold"
+                               Foreground="#9898A4"
+                               VerticalAlignment="Center"
+                               Margin="8,0,2,0"
+                               MinWidth="44"
+                               TextAlignment="Right"
+                               FontFamily="Consolas"
+                               ToolTip="Live RPM (MultiViewer telemetry)" />
+                    <ItemsControl x:Name="LedStrip">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <UniformGrid Rows="1" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{Binding}"
+                                        Margin="1,0"
+                                        CornerRadius="2"
+                                        Height="18" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
+            </Border>
+
+            <StackPanel Grid.Column="2" Orientation="Horizontal"
                         VerticalAlignment="Center">
                 <ToggleButton x:Name="LedToggle"
                               Content="💡 LEDs"
@@ -206,58 +254,10 @@
              VersionText.ToolTip. -->
         <TextBlock x:Name="SettingsPathText" Visibility="Collapsed" />
 
-        <!-- Driver list with vertical LED strip on the left.
-             Each driver row is 70 px tall (64 height + 6 bottom margin) so
-             two LEDs per row gives a clean 14-LED bar spanning roughly seven
-             drivers — which matches the picker's default visible roster. -->
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-
-            <!-- Vertical LED strip + live RPM readout.
-                 LEDs are fixed at 35 px tall so two LEDs line up exactly
-                 with one driver row (rows are 64 + 6 margin = 70 px). That
-                 means the full 14-LED bar spans the top 7 driver rows —
-                 anchored to the top so position 1 sits next to LED 14
-                 (the redline LED that lights last). -->
-            <DockPanel Grid.Column="0" LastChildFill="True"
-                       Width="26" Margin="0,0,8,0"
-                       VerticalAlignment="Top">
-                <Border DockPanel.Dock="Top"
-                        Background="#0A0A0E"
-                        CornerRadius="6" Padding="4,6"
-                        BorderBrush="#1F1F26" BorderThickness="1">
-                    <ItemsControl x:Name="LedStrip">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Vertical" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border Background="{Binding}"
-                                        Margin="0,1"
-                                        CornerRadius="2"
-                                        Height="35" />
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </Border>
-                <TextBlock x:Name="RpmReadout"
-                           Text="—"
-                           FontSize="10" FontWeight="SemiBold"
-                           Foreground="#9898A4"
-                           TextAlignment="Center"
-                           Margin="0,4,0,0"
-                           ToolTip="Live RPM (MultiViewer telemetry)" />
-            </DockPanel>
-
-            <!-- Driver list -->
-            <ScrollViewer Grid.Column="1"
-                          VerticalScrollBarVisibility="Auto"
-                          HorizontalScrollBarVisibility="Disabled">
+        <!-- Driver list — now spans full width. The LED preview moved to
+             the header so the list can use every pixel for timing data. -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
                 <ItemsControl x:Name="DriverList">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type models:DriverTimingRow}">
@@ -526,6 +526,5 @@
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
         </ScrollViewer>
-        </Grid>
     </DockPanel>
 </Window>

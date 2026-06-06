@@ -341,19 +341,14 @@
                                 <!-- LAST + BEST lap times stack -->
                                 <StackPanel Grid.Column="3" VerticalAlignment="Center"
                                             Margin="0,0,4,0">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="28" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <TextBlock Text="LAST"
                                                    FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
-                                                   VerticalAlignment="Center" />
-                                        <Border Grid.Column="1"
-                                                Background="{Binding LastLapStatus, Converter={StaticResource LapStatusToBoxBg}}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,5,0" />
+                                        <Border Background="{Binding LastLapStatus, Converter={StaticResource LapStatusToBoxBg}}"
                                                 CornerRadius="8" Padding="6,0"
-                                                HorizontalAlignment="Right"
                                                 VerticalAlignment="Center">
                                             <TextBlock Text="{Binding LastLapTime}"
                                                        FontSize="14" FontWeight="Bold"
@@ -361,20 +356,16 @@
                                                        TextAlignment="Right"
                                                        FontFamily="Consolas" />
                                         </Border>
-                                    </Grid>
-                                    <Grid Margin="0,1,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="28" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                Margin="0,1,0,0">
                                         <TextBlock Text="BEST"
                                                    FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
-                                                   VerticalAlignment="Center" />
-                                        <Border Grid.Column="1"
-                                                Background="{Binding BestLapStatus, Converter={StaticResource LapStatusToBoxBg}}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,5,0" />
+                                        <Border Background="{Binding BestLapStatus, Converter={StaticResource LapStatusToBoxBg}}"
                                                 CornerRadius="8" Padding="6,0"
-                                                HorizontalAlignment="Right"
                                                 VerticalAlignment="Center">
                                             <TextBlock Text="{Binding BestLapTime}"
                                                        FontSize="14" FontWeight="Bold"
@@ -382,26 +373,21 @@
                                                        TextAlignment="Right"
                                                        FontFamily="Consolas" />
                                         </Border>
-                                    </Grid>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <!-- INT + LDR stack (matches MultiViewer terminology:
                                      INT = interval to car ahead, LDR = gap to leader) -->
                                 <StackPanel Grid.Column="4" VerticalAlignment="Center"
                                             Margin="0,0,4,0">
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="22" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <TextBlock Text="INT"
                                                    FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
-                                                   VerticalAlignment="Center" />
-                                        <Border Grid.Column="1"
-                                                Background="{Binding IntervalToAhead, Converter={StaticResource InPitToBg}}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,5,0" />
+                                        <Border Background="{Binding IntervalToAhead, Converter={StaticResource InPitToBg}}"
                                                 CornerRadius="8" Padding="6,0"
-                                                HorizontalAlignment="Right"
                                                 VerticalAlignment="Center">
                                             <TextBlock Text="{Binding IntervalToAhead}"
                                                        FontSize="14" FontWeight="Bold"
@@ -409,20 +395,16 @@
                                                        TextAlignment="Right"
                                                        FontFamily="Consolas" />
                                         </Border>
-                                    </Grid>
-                                    <Grid Margin="0,1,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="22" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                Margin="0,1,0,0">
                                         <TextBlock Text="LDR"
                                                    FontSize="8" FontWeight="SemiBold"
                                                    Foreground="#6F6F7A"
-                                                   VerticalAlignment="Center" />
-                                        <Border Grid.Column="1"
-                                                Background="{Binding GapToLeader, Converter={StaticResource InPitToBg}}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,5,0" />
+                                        <Border Background="{Binding GapToLeader, Converter={StaticResource InPitToBg}}"
                                                 CornerRadius="8" Padding="6,0"
-                                                HorizontalAlignment="Right"
                                                 VerticalAlignment="Center">
                                             <TextBlock Text="{Binding GapToLeader}"
                                                        FontSize="14" FontWeight="Bold"
@@ -430,7 +412,7 @@
                                                        TextAlignment="Right"
                                                        FontFamily="Consolas" />
                                         </Border>
-                                    </Grid>
+                                    </StackPanel>
                                 </StackPanel>
 
                                 <!-- Tire badge + age. Vic explicitly wanted this kept
@@ -452,9 +434,9 @@
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center" />
                                     </Border>
-                                    <TextBlock Text="{Binding TireAge, StringFormat='L{0}'}"
-                                               FontSize="10" FontWeight="SemiBold"
-                                               Foreground="#B8B8C4"
+                                    <TextBlock Text="{Binding TireAge}"
+                                               FontSize="13" FontWeight="Bold"
+                                               Foreground="#E8E8EE"
                                                HorizontalAlignment="Center"
                                                Margin="0,1,0,0" />
                                 </StackPanel>

@@ -3,5 +3,146 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
+
+        <!-- ============================================================
+             Dark, flat scrollbar style.
+             Applied implicitly to every ScrollBar in the app so the
+             ScrollViewer wrapping the driver list (and anywhere else
+             scrolling appears) matches the dark window chrome instead of
+             rendering Windows' default light scrollbar.
+             ============================================================ -->
+
+        <Style x:Key="DarkScrollBarThumb" TargetType="{x:Type Thumb}">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border x:Name="Rectangle"
+                                Background="#3A3A45"
+                                CornerRadius="3"
+                                Margin="2" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Rectangle" Property="Background" Value="#4A4A55" />
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Rectangle" Property="Background" Value="#5A5A65" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="DarkScrollBarPageButton" TargetType="{x:Type RepeatButton}">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RepeatButton}">
+                        <Border Background="Transparent" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Line (arrow) buttons are collapsed to zero pixels — MV's
+             scrollbar follows the same minimal pattern. -->
+        <Style x:Key="DarkScrollBarLineButton" TargetType="{x:Type RepeatButton}">
+            <Setter Property="OverridesDefaultStyle" Value="True" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RepeatButton}">
+                        <Border Background="Transparent" />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type ScrollBar}">
+            <Setter Property="Background" Value="#0F0F12" />
+            <Setter Property="Foreground" Value="#3A3A45" />
+            <Setter Property="Width" Value="12" />
+            <Setter Property="MinWidth" Value="12" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ScrollBar}">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="0" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="0" />
+                            </Grid.RowDefinitions>
+                            <RepeatButton Grid.Row="0"
+                                          Style="{StaticResource DarkScrollBarLineButton}"
+                                          Command="ScrollBar.LineUpCommand" />
+                            <Track Name="PART_Track" Grid.Row="1" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource DarkScrollBarThumb}" />
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource DarkScrollBarPageButton}"
+                                                  Command="ScrollBar.PageDownCommand" />
+                                </Track.IncreaseRepeatButton>
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Style="{StaticResource DarkScrollBarPageButton}"
+                                                  Command="ScrollBar.PageUpCommand" />
+                                </Track.DecreaseRepeatButton>
+                            </Track>
+                            <RepeatButton Grid.Row="2"
+                                          Style="{StaticResource DarkScrollBarLineButton}"
+                                          Command="ScrollBar.LineDownCommand" />
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="Orientation" Value="Horizontal">
+                    <Setter Property="Width" Value="Auto" />
+                    <Setter Property="MinWidth" Value="0" />
+                    <Setter Property="Height" Value="12" />
+                    <Setter Property="MinHeight" Value="12" />
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="{x:Type ScrollBar}">
+                                <Grid Background="{TemplateBinding Background}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="0" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="0" />
+                                    </Grid.ColumnDefinitions>
+                                    <Track Name="PART_Track" Grid.Column="1">
+                                        <Track.Thumb>
+                                            <Thumb Style="{StaticResource DarkScrollBarThumb}" />
+                                        </Track.Thumb>
+                                        <Track.IncreaseRepeatButton>
+                                            <RepeatButton Style="{StaticResource DarkScrollBarPageButton}"
+                                                          Command="ScrollBar.PageRightCommand" />
+                                        </Track.IncreaseRepeatButton>
+                                        <Track.DecreaseRepeatButton>
+                                            <RepeatButton Style="{StaticResource DarkScrollBarPageButton}"
+                                                          Command="ScrollBar.PageLeftCommand" />
+                                        </Track.DecreaseRepeatButton>
+                                    </Track>
+                                </Grid>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Force ScrollViewers (and any nested ones) to use the dark
+             scrollbar by default. Avoids the white corner square at the
+             intersection of the two scrollbars when both are visible. -->
+        <Style TargetType="{x:Type ScrollViewer}">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+
     </Application.Resources>
 </Application>

@@ -474,24 +474,48 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Repaints the LED strip for the given raw RPM value, using the same
-    /// 0/30/63/94 threshold scheme as the wheel device JSON so what the
-    /// picker shows matches what the wheel renders.
+    /// Per-LED lighting thresholds expressed as a percentage of the
+    /// shift-light range (start RPM → end RPM, i.e. <c>RpmShiftPercent</c>).
+    /// These are deliberately NOT a uniform 1/<see cref="LedCount"/> spread:
+    /// they mirror the actual three-segment gradient configured on the F1
+    /// steering-wheel device in SimHub so the picker's bar lights up at
+    /// the same RPM as the physical wheel.
+    ///
+    /// <para>Wheel config (from
+    /// <c>SimHub\PluginsData\Common\Devices\&lt;wheel&gt;\settings.json</c>,
+    /// three <c>CustomGradient</c> rules driven by
+    /// <c>[F1SimHubLivePlugin.RpmShiftPercent]</c>):</para>
+    /// <list type="bullet">
+    ///   <item>LEDs 1–5 (green): range 0–30%, 5 LEDs → 6% per LED</item>
+    ///   <item>LEDs 6–10 (blue): range 30–63%, 5 LEDs → 6.6% per LED</item>
+    ///   <item>LEDs 11–14 (red): range 63–93%, 4 LEDs → 7.5% per LED</item>
+    /// </list>
+    /// LED 1's threshold is a hair above 0 (not exactly 0) so the strip
+    /// renders dim while idling at the configured start RPM, matching the
+    /// wheel's <c>EnabledFormula: RpmShiftPercent &gt; 0</c> gate.
+    ///
+    /// <para>Why it matters: with a uniform 1/14 spread the picker was
+    /// consistently ~1 LED behind the wheel at any given RPM, because the
+    /// wheel reaches its full 14-LED bar at ~85% but uniform spread requires
+    /// ~93%. That ~1-LED offset is visible in real driving when comparing
+    /// the on-screen bar to the wheel.</para>
     /// </summary>
+    private static readonly double[] LedLightThresholdsPercent =
+    {
+        0.001,                                              // LED  1 (green) — same gate as wheel: > 0
+        6.0, 12.0, 18.0, 24.0,                              // LEDs 2-5 (green)
+        30.0, 36.6, 43.2, 49.8, 56.4,                       // LEDs 6-10 (blue)
+        63.0, 70.5, 78.0, 85.5                              // LEDs 11-14 (red)
+    };
+
     private void ApplyLedsForRpm(double rpm)
     {
         if (_ledBrushes.Count != LedCount) return;
         double range = Math.Max(1, _endRpm - _startRpm);
         double percent = Math.Clamp((rpm - _startRpm) / range * 100.0, 0, 100);
-        // LedCount LEDs total; if percent crosses a per-LED threshold, that
-        // LED lights up. LED 1 (index 0) lights at the smallest percent,
-        // LED 14 / redline (index LedCount-1) lights last.
         for (int i = 0; i < LedCount; i++)
         {
-            // Threshold for LED i to light: ((i + 1) / LedCount) * 100.
-            // LED 1 (i=0) lights as soon as any RPM is above start.
-            double threshold = (i + 0.001) * 100.0 / LedCount;
-            bool lit = percent >= threshold;
+            bool lit = percent >= LedLightThresholdsPercent[i];
             // Horizontal LED bar in the header renders left-to-right
             // (UniformGrid Rows=1), so brush index = logical LED index —
             // green LEDs on the left, blue middle, red redline on the right,

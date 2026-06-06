@@ -24,7 +24,6 @@ public partial class MainWindow : Window
     //   --settings <path>   override the F1SimHubLive.Settings.json location
     //   --mv-url <url>      override MultiViewer base URL
     private const string DefaultMvUrl = "http://localhost:10101";
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
     private const int LedCount = 14;
     // Slider-to-disk debounce: drag events fire fast (50–60 Hz), so wait for
     // the user to settle for ~250 ms before writing the settings file. The
@@ -35,8 +34,7 @@ public partial class MainWindow : Window
 
     private readonly string _settingsPath;
     private readonly string _mvUrl;
-    private readonly MultiViewerDriverListClient _mv;
-    private readonly DispatcherTimer _pollTimer;
+    private readonly LiveTimingClient _liveTimingClient;
     private readonly FileSystemWatcher? _settingsWatcher;
     private readonly object _watcherLock = new();
     private DateTime _lastWatcherFire = DateTime.MinValue;
@@ -56,7 +54,6 @@ public partial class MainWindow : Window
     private bool _suppressSliderWrite; // true while loading from settings
 
     private CancellationTokenSource _ctsLifetime = new();
-    private IReadOnlyList<DriverEntry> _lastDrivers = Array.Empty<DriverEntry>();
     private string _currentDriverNumber = "";
 
     public MainWindow()
@@ -66,7 +63,7 @@ public partial class MainWindow : Window
         var (settingsPath, mvUrl) = ParseArgs(Environment.GetCommandLineArgs());
         _settingsPath = settingsPath ?? DefaultSettingsPath();
         _mvUrl = mvUrl ?? DefaultMvUrl;
-        _mv = new MultiViewerDriverListClient(_mvUrl);
+        _liveTimingClient = new LiveTimingClient(Dispatcher, _mvUrl);
         _telemetry = new PickerTelemetryClient(_mvUrl);
 
         SettingsPathText.Text = _settingsPath;
@@ -115,6 +112,27 @@ public partial class MainWindow : Window
         _sliderWriteTimer = new DispatcherTimer { Interval = SliderWriteDelay };
         _sliderWriteTimer.Tick += SliderWriteTimer_Tick;
 
+        // Wire the live-timing client and bind its rows to the ItemsControl.
+        // Rows is an ObservableCollection that LiveTimingClient mutates in
+        // place on the UI thread (via Dispatcher), so we set ItemsSource
+        // exactly once and let WPF react to CollectionChanged.
+        DriverList.ItemsSource = _liveTimingClient.Rows;
+        _liveTimingClient.SetCurrentDriverNumber(
+            string.IsNullOrEmpty(_currentDriverNumber) ? null : _currentDriverNumber);
+        _liveTimingClient.OnStatus += msg => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            StatusText.Text = msg;
+        }));
+        _liveTimingClient.Rows.CollectionChanged += (_, _) =>
+        {
+            // Cheap: the count is the only thing that affects the status
+            // bar; per-row property changes don't bubble up here.
+            StatusText.Text = _liveTimingClient.Rows.Count == 0
+                ? "Waiting for MultiViewer session…"
+                : $"MultiViewer: {_liveTimingClient.Rows.Count} drivers · live (500 ms)";
+            UpdateCurrentDriverText();
+        };
+
         try
         {
             string dir = Path.GetDirectoryName(_settingsPath) ?? "";
@@ -135,19 +153,16 @@ public partial class MainWindow : Window
             // Watcher is a nice-to-have; we still poll on a timer.
         }
 
-        _pollTimer = new DispatcherTimer { Interval = PollInterval };
-        _pollTimer.Tick += async (_, _) => await PollDriverListAsync();
-
         Loaded += async (_, _) =>
         {
-            await PollDriverListAsync();
-            _pollTimer.Start();
+            _liveTimingClient.Start();
             _ = CheckForUpdateAsync(); // fire-and-forget; UI updates if newer
+            await Task.CompletedTask;
         };
 
         Closed += (_, _) =>
         {
-            _pollTimer.Stop();
+            _liveTimingClient.Dispose();
             _sliderWriteTimer.Stop();
             _settingsWatcher?.Dispose();
             _telemetry.Dispose();
@@ -175,46 +190,6 @@ public partial class MainWindow : Window
         return Path.Combine(pf86, "SimHub", "F1SimHubLive.Settings.json");
     }
 
-    private async Task PollDriverListAsync()
-    {
-        try
-        {
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_ctsLifetime.Token);
-            cts.CancelAfter(TimeSpan.FromSeconds(4));
-            var drivers = await _mv.FetchAsync(cts.Token);
-            RenderDrivers(drivers);
-            StatusText.Text = $"MultiViewer: {drivers.Count} drivers · refresh {PollInterval.TotalSeconds:0}s";
-        }
-        catch (Exception ex)
-        {
-            StatusText.Text = $"MultiViewer unavailable: {ex.GetType().Name}. Retrying every {PollInterval.TotalSeconds:0}s…";
-        }
-    }
-
-    private void RenderDrivers(IReadOnlyList<DriverEntry> drivers)
-    {
-        // Re-mark IsCurrent based on the latest settings read so external edits
-        // (reinstaller, manual edit) also light up the right row.
-        var withCurrent = drivers.Select(d => new DriverEntry
-        {
-            Number = d.Number,
-            Tla = d.Tla,
-            LastName = d.LastName,
-            FirstName = d.FirstName,
-            TeamName = d.TeamName,
-            TeamColour = d.TeamColour,
-            RacingNumberSort = d.RacingNumberSort,
-            TeamPosition = d.TeamPosition,
-            TeamPoints = d.TeamPoints,
-            DriverPoints = d.DriverPoints,
-            IsCurrent = !string.IsNullOrEmpty(_currentDriverNumber)
-                        && d.Number == _currentDriverNumber,
-        }).ToList();
-        _lastDrivers = withCurrent;
-        DriverList.ItemsSource = withCurrent;
-        UpdateCurrentDriverText();
-    }
-
     private void UpdateCurrentDriverText()
     {
         if (string.IsNullOrEmpty(_currentDriverNumber))
@@ -222,9 +197,9 @@ public partial class MainWindow : Window
             CurrentDriverText.Text = "—";
             return;
         }
-        var match = _lastDrivers.FirstOrDefault(d => d.Number == _currentDriverNumber);
+        var match = _liveTimingClient.Rows.FirstOrDefault(r => r.RacingNumber == _currentDriverNumber);
         if (match != null && !string.IsNullOrEmpty(match.Tla))
-            CurrentDriverText.Text = $"{match.Tla}  #{match.Number}";
+            CurrentDriverText.Text = $"{match.Tla}  #{match.RacingNumber}";
         else
             CurrentDriverText.Text = $"#{_currentDriverNumber}";
     }
@@ -240,9 +215,8 @@ public partial class MainWindow : Window
             SettingsFileWriter.WriteDriverNumber(_settingsPath, number);
             _currentDriverNumber = number;
             _telemetry.SetDriverNumber(number);
-            // Re-render so the highlight moves immediately; the next poll will
-            // also confirm via DriverList refresh.
-            RenderDrivers(_lastDrivers);
+            _liveTimingClient.SetCurrentDriverNumber(number);
+            UpdateCurrentDriverText();
             StatusText.Text = $"Switched to #{number} — plugin will reload within ~250 ms.";
         }
         catch (UnauthorizedAccessException)
@@ -283,7 +257,8 @@ public partial class MainWindow : Window
                 {
                     _currentDriverNumber = n!;
                     _telemetry.SetDriverNumber(n!);
-                    RenderDrivers(_lastDrivers);
+                    _liveTimingClient.SetCurrentDriverNumber(n!);
+                    UpdateCurrentDriverText();
                 }
                 // Also re-read the shift range — covers external edits and
                 // round-trips after we wrote it ourselves (cheap idempotent

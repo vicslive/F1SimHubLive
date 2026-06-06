@@ -273,34 +273,27 @@
                                 Tag="{Binding RacingNumber}">
                             <Grid Height="56">
                                 <Grid.ColumnDefinitions>
-                                    <!-- Position number -->
-                                    <ColumnDefinition Width="30" />
+                                    <!-- Position number (tight, no padding so the TLA
+                                         tile sits right next to it like MV) -->
+                                    <ColumnDefinition Width="26" />
                                     <!-- Team-colour TLA tile -->
                                     <ColumnDefinition Width="52" />
-                                    <!-- Driver name + team. Auto width but shared across
-                                         all rows so every row's name column ends at the
-                                         same x position (= max name+team width across
-                                         visible drivers). Without SharedSizeGroup, each
-                                         row's name col sized independently and the
-                                         downstream Speed / LAST / INT columns shifted
-                                         left/right depending on the local name length. -->
-                                    <ColumnDefinition Width="Auto" SharedSizeGroup="NameCol" />
                                     <!-- Current speed (km/h) -->
                                     <ColumnDefinition Width="72" />
-                                    <!-- LAST + BEST lap times -->
-                                    <ColumnDefinition Width="92" />
-                                    <!-- INT + LDR -->
-                                    <ColumnDefinition Width="78" />
-                                    <!-- Tire badge + age — Vic likes the current size,
-                                         row height is sized to it. -->
+                                    <!-- LAST + BEST lap times — widened from 92 to 120
+                                         after dropping the name+team column so the PB/SB
+                                         pills have room to render without clipping. -->
+                                    <ColumnDefinition Width="120" />
+                                    <!-- INT + LDR — widened from 78 to 100 so the
+                                         "IN PIT" red pill doesn't get truncated. -->
+                                    <ColumnDefinition Width="100" />
+                                    <!-- Tire badge + age -->
                                     <ColumnDefinition Width="50" />
                                     <!-- Pit count -->
                                     <ColumnDefinition Width="30" />
                                     <!-- Sector segment strip (3 sectors, two-row times).
                                          Star with MinWidth so it absorbs all remaining
-                                         horizontal space, eliminating the dead zone
-                                         that used to sit between the driver name
-                                         (when it was *) and the speed column. -->
+                                         horizontal space. -->
                                     <ColumnDefinition Width="*" MinWidth="260" />
                                 </Grid.ColumnDefinitions>
 
@@ -312,11 +305,12 @@
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
 
-                                <!-- TLA tile -->
+                                <!-- TLA tile — sits flush against the position number
+                                     to read as a single unit like MV's "1 LEC". -->
                                 <Border Grid.Column="1"
                                         Background="{Binding TeamColour, Converter={StaticResource HexToBrush}}"
                                         CornerRadius="3"
-                                        Margin="0,3">
+                                        Margin="0,3,0,3">
                                     <TextBlock Text="{Binding Tla}"
                                                Foreground="White"
                                                FontSize="16" FontWeight="Black"
@@ -324,24 +318,10 @@
                                                VerticalAlignment="Center" />
                                 </Border>
 
-                                <!-- Name + team -->
-                                <StackPanel Grid.Column="2" VerticalAlignment="Center"
-                                            Margin="8,0,8,0">
-                                    <TextBlock Text="{Binding LastName}"
-                                               FontSize="13" FontWeight="Bold"
-                                               Foreground="#FFFFFF"
-                                               TextTrimming="CharacterEllipsis" />
-                                    <TextBlock Text="{Binding TeamName}"
-                                               FontSize="9"
-                                               Foreground="#9898A4"
-                                               TextTrimming="CharacterEllipsis"
-                                               Margin="0,0,0,0" />
-                                </StackPanel>
-
                                 <!-- Current speed (km/h) — big number with a tiny unit label.
                                      Updated from MV CarData channel "2" via the
                                      telemetry client's OnSpeedsBatch event. -->
-                                <StackPanel Grid.Column="3" VerticalAlignment="Center"
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center"
                                             HorizontalAlignment="Right"
                                             Margin="0,0,6,0">
                                     <TextBlock Text="{Binding SpeedKmh}"
@@ -359,7 +339,7 @@
                                 </StackPanel>
 
                                 <!-- LAST + BEST lap times stack -->
-                                <StackPanel Grid.Column="4" VerticalAlignment="Center"
+                                <StackPanel Grid.Column="3" VerticalAlignment="Center"
                                             Margin="0,0,4,0">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -407,7 +387,7 @@
 
                                 <!-- INT + LDR stack (matches MultiViewer terminology:
                                      INT = interval to car ahead, LDR = gap to leader) -->
-                                <StackPanel Grid.Column="5" VerticalAlignment="Center"
+                                <StackPanel Grid.Column="4" VerticalAlignment="Center"
                                             Margin="0,0,4,0">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -457,7 +437,7 @@
                                      at the current visual size — the whole row height
                                      is now tuned around the tire stack's natural
                                      footprint (28px badge + 1 + ~10 text = ~40px). -->
-                                <StackPanel Grid.Column="6"
+                                <StackPanel Grid.Column="5"
                                             Orientation="Vertical"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center">
@@ -480,7 +460,7 @@
                                 </StackPanel>
 
                                 <!-- Pit count -->
-                                <StackPanel Grid.Column="7"
+                                <StackPanel Grid.Column="6"
                                             Orientation="Vertical"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
@@ -507,7 +487,7 @@
                                      stays uniform across S1/S2/S3 — without this the
                                      sector with the most mini-sectors visually has
                                      skinnier bars than the others. -->
-                                <Grid Grid.Column="8" Margin="4,2,2,2">
+                                <Grid Grid.Column="7" Margin="4,2,2,2">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="{Binding Sectors[0].SegmentCount, Converter={StaticResource CountToGridStar}}" />
                                         <ColumnDefinition Width="{Binding Sectors[1].SegmentCount, Converter={StaticResource CountToGridStar}}" />

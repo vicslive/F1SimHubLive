@@ -259,7 +259,7 @@
              the header so the list can use every pixel for timing data. -->
         <ScrollViewer VerticalScrollBarVisibility="Auto"
                       HorizontalScrollBarVisibility="Disabled">
-                <ItemsControl x:Name="DriverList">
+                <ItemsControl x:Name="DriverList" Grid.IsSharedSizeScope="True">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate DataType="{x:Type models:DriverTimingRow}">
                         <Button Style="{StaticResource DriverButtonStyle}"
@@ -272,9 +272,14 @@
                                     <ColumnDefinition Width="30" />
                                     <!-- Team-colour TLA tile -->
                                     <ColumnDefinition Width="52" />
-                                    <!-- Driver name + team — Auto so it shrinks to fit,
-                                         freeing the slack to grow the sector strip. -->
-                                    <ColumnDefinition Width="Auto" />
+                                    <!-- Driver name + team. Auto width but shared across
+                                         all rows so every row's name column ends at the
+                                         same x position (= max name+team width across
+                                         visible drivers). Without SharedSizeGroup, each
+                                         row's name col sized independently and the
+                                         downstream Speed / LAST / INT columns shifted
+                                         left/right depending on the local name length. -->
+                                    <ColumnDefinition Width="Auto" SharedSizeGroup="NameCol" />
                                     <!-- Current speed (km/h) -->
                                     <ColumnDefinition Width="72" />
                                     <!-- LAST + BEST lap times -->

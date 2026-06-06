@@ -522,8 +522,40 @@ public sealed class LiveTimingClient : IDisposable
             row.LastLapStatus = s.LastLapStatus;
             row.BestLapTime = s.BestLapTime;
             row.BestLapStatus = s.BestLapStatus;
-            row.GapToLeader = s.GapToLeader;
-            row.IntervalToAhead = s.IntervalToAhead;
+
+            // INT / LDR display precedence (mirrors the wheel HUD dashboard
+            // formulas added in v1.3.7 — keep these in sync if you change one):
+            //   1. Position == 1 -> the leader has no meaningful INT or LDR;
+            //      show "—" so the column doesn't render a stale gap. MV
+            //      sometimes leaves GapToLeader populated on the row that just
+            //      became P1 (cached from the previous tick) which is why we
+            //      force "—" defensively rather than trusting MV to return "".
+            //   2. InPit -> the gap-to-leader / gap-to-ahead is from the
+            //      driver's last lap crossing the line; once they peel into
+            //      pit lane it's misleading because the pit-lane delta will
+            //      shift it by ~20s before the next valid measurement. Show
+            //      "IN PIT" so the user sees pit state, not a stale gap.
+            //   3. Empty string from MV -> substitute "—" to match MV's
+            //      display convention. MV returns empty for INT/LDR when a
+            //      driver hasn't completed a flying lap yet (out-laps in Q,
+            //      first stint of FP). Rendering empty looks broken; "—"
+            //      tells the user the data isn't available yet.
+            //   4. Otherwise -> raw gap string from MV.
+            if (s.Position == 1)
+            {
+                row.GapToLeader = "\u2014";      // em dash
+                row.IntervalToAhead = "\u2014";
+            }
+            else if (s.InPit)
+            {
+                row.GapToLeader = "IN PIT";
+                row.IntervalToAhead = "IN PIT";
+            }
+            else
+            {
+                row.GapToLeader = string.IsNullOrEmpty(s.GapToLeader) ? "\u2014" : s.GapToLeader;
+                row.IntervalToAhead = string.IsNullOrEmpty(s.IntervalToAhead) ? "\u2014" : s.IntervalToAhead;
+            }
             row.InPit = s.InPit;
             row.Retired = s.Retired;
             row.TireCompoundLetter = s.TireCompoundLetter;

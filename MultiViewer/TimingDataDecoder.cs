@@ -118,6 +118,7 @@ namespace F1SimHubLive.MultiViewer
                 snap.AheadLastLapTime = (string?)aheadLast["Value"] ?? "";
             if (d["BestLapTime"] is JObject aheadBest)
                 snap.AheadBestLapTime = (string?)aheadBest["Value"] ?? "";
+            snap.AheadInPit = (bool?)d["InPit"] ?? false;
             if (d["Sectors"] is not JArray sectors) return;
             if (sectors.Count > 0 && sectors[0] is JObject s1)
             {
@@ -145,6 +146,7 @@ namespace F1SimHubLive.MultiViewer
                 snap.LeaderLastLapTime = (string?)leaderLast["Value"] ?? "";
             if (d["BestLapTime"] is JObject leaderBest)
                 snap.LeaderBestLapTime = (string?)leaderBest["Value"] ?? "";
+            snap.LeaderInPit = (bool?)d["InPit"] ?? false;
             if (d["Sectors"] is not JArray sectors) return;
             if (sectors.Count > 0 && sectors[0] is JObject s1)
             {

@@ -57,6 +57,9 @@ namespace F1SimHubLive.Telemetry
         public string LeaderLastLapTime { get; set; } = "";
         public string LeaderBestLapTime { get; set; } = "";
 
+        public bool AheadInPit { get; set; }
+        public bool LeaderInPit { get; set; }
+
         public string AheadSector1Time { get; set; } = "";
         public string AheadSector2Time { get; set; } = "";
         public string AheadSector3Time { get; set; } = "";

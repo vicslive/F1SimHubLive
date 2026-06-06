@@ -370,9 +370,11 @@ The screen is laid out as a 3-column broadcast grid: **left = timing column**, *
 **Center telemetry column** — the big numbers you actually drive by: live **SPEED** (km/h, cyan box), the selected driver's current **GEAR** (huge white digit, dominates the screen), and **RPM** (yellow box, also reflected in the shift-light LEDs). RPM-driven shift lights wrap the screen edge.
 
 **Left timing column** — sector splits laid out like the F1 international feed timing tower:
-- Top: `INT` pill (car directly ahead, with its car number) + the gap to it (`+2.757`), then that car's last three sector times.
+- Top: `INT` pill (car directly ahead, with its car number) + **that car's last lap time** (e.g. `1:32.717`) + the gap to it as a colored badge (`+2.757`), then that car's last three sector times.
 - Middle: **your** driver's three sector times, coloured purple for overall-best, green for personal-best, yellow otherwise.
-- Bottom: leader's three sector times + the gap to leader (`+5.985`) + `LDR` pill with leader's car number.
+- Bottom: leader's three sector times + the gap to leader as a colored badge (`+5.985`) + `LDR` pill with leader's car number and **the leader's last lap time** (e.g. `1:29.108`).
+
+> ℹ️ The INT/LDR pill **center values** show the *other car's* most recent lap time (so you can compare pace at a glance — your last lap vs. the car ahead's vs. the leader's, all displayed simultaneously). The colored gap badges next to each pill still show the relative time delta. Screenshots above pre-date v1.3.6 and show all three pills with the picked driver's own lap time — see the v1.3.6 changelog entry for the fix.
 
 **Right pace column** — LAP `M/N` and POSITION `X/N` pills, the **INPUTS** panel (`BRAKE PRESSURE` yellow bar above, `THROTTLE POSITION` white bar below — same convention as the F1 international feed input overlay), the `@vicslive` signature widget, and a LAST/GAP readout for the selected driver's most recent lap time and current race gap to leader.
 

@@ -189,6 +189,11 @@ public enum LapStatus
     None,
     PersonalBest,
     SessionBest,
+    // Sentinel value used only on row.LastLapStatus when the driver is in
+    // pit lane. Lets the LAST cell's pill converters render the red
+    // "IN PIT" box (matching MV Live Timing's treatment) without needing
+    // a separate IMultiValueConverter on the binding.
+    InPit,
 }
 
 /// <summary>

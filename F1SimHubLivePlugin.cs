@@ -89,6 +89,12 @@ namespace F1SimHubLive
             Register("AheadSector1Time", "");
             Register("AheadCarNumber", "");
             Register("LeaderCarNumber", "");
+            Register("AheadLastLapTime", "");
+            Register("AheadBestLapTime", "");
+            Register("LeaderLastLapTime", "");
+            Register("LeaderBestLapTime", "");
+            Register("AheadInPit", false);
+            Register("LeaderInPit", false);
             Register("AheadSector2Time", "");
             Register("AheadSector3Time", "");
             Register("AheadSector1IsPersonalBest", false);
@@ -147,6 +153,8 @@ namespace F1SimHubLive
                 SetProp("AheadBestLapTime", t.AheadBestLapTime);
                 SetProp("LeaderLastLapTime", t.LeaderLastLapTime);
                 SetProp("LeaderBestLapTime", t.LeaderBestLapTime);
+                SetProp("AheadInPit", t.AheadInPit);
+                SetProp("LeaderInPit", t.LeaderInPit);
                 SetProp("AheadSector2Time", t.AheadSector2Time);
                 SetProp("AheadSector3Time", t.AheadSector3Time);
                 SetProp("AheadSector1IsPersonalBest", t.AheadSector1IsPersonalBest);

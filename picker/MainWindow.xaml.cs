@@ -71,6 +71,12 @@ public partial class MainWindow : Window
         WindowGeometryStore.Apply(this);
         WindowGeometryStore.Attach(this);
 
+        // Restore user UI preferences (Pin checkbox state) before the window
+        // is shown. Apply happens AFTER Geometry so the topmost-checkbox
+        // handler that fires from the apply has the right Topmost source-of-
+        // truth wired up already. See WindowPreferencesStore for rationale.
+        WindowPreferencesStore.Apply(this, TopmostCheck);
+
         var (settingsPath, mvUrl) = ParseArgs(Environment.GetCommandLineArgs());
         _settingsPath = settingsPath ?? DefaultSettingsPath();
         _mvUrl = mvUrl ?? DefaultMvUrl;
@@ -299,7 +305,11 @@ public partial class MainWindow : Window
 
     private void TopmostCheck_Changed(object sender, RoutedEventArgs e)
     {
-        if (sender is CheckBox cb) Topmost = cb.IsChecked == true;
+        if (sender is CheckBox cb)
+        {
+            Topmost = cb.IsChecked == true;
+            WindowPreferencesStore.Save(cb);
+        }
     }
 
     private void LedToggle_Changed(object sender, RoutedEventArgs e)

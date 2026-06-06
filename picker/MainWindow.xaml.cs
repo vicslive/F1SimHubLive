@@ -61,6 +61,16 @@ public partial class MainWindow : Window
         InitializeComponent();
         DarkTitleBar.Enable(this);
 
+        // Restore window position / size / maximized state from the previous
+        // session before the window is shown, and wire up continuous save on
+        // move/resize/state-change/close. We do this in two steps because
+        // some close paths (SimHub shutting down a child picker, Task
+        // Manager kill, crashes in other Closed handlers) never reach a
+        // save-on-Closed callback — the continuous (debounced) save in
+        // Attach guarantees the latest geometry is always on disk.
+        WindowGeometryStore.Apply(this);
+        WindowGeometryStore.Attach(this);
+
         var (settingsPath, mvUrl) = ParseArgs(Environment.GetCommandLineArgs());
         _settingsPath = settingsPath ?? DefaultSettingsPath();
         _mvUrl = mvUrl ?? DefaultMvUrl;

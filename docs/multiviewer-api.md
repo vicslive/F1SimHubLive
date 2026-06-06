@@ -107,6 +107,41 @@ All endpoints return decompressed JSON (no need to inflate the base64-DEFLATE pa
 
 ---
 
+## Live vs replay payload shapes — what changes per-session
+
+The same MV endpoint can return slightly different JSON depending on whether the session is **live** (MV is connected to F1's real SignalR feed during a session weekend) or a **replay** (MV is replaying a recorded session, including its own automatically-captured live sessions). The replay layer reconstructs some fields that the live feed doesn't emit for non-race sessions, which means code that works on replay can silently break on live.
+
+### `TimingData` — gap to leader and interval to driver ahead
+
+`/api/v1/live-timing/TimingData` is the worst offender as of MV 1.30+.
+
+| Session mode                                | `Lines[N].GapToLeader` | `Lines[N].IntervalToPositionAhead.Value` | Where the data actually lives                                                                  |
+|---------------------------------------------|------------------------|------------------------------------------|------------------------------------------------------------------------------------------------|
+| Race (live or replay)                       | ✓ populated            | ✓ populated                              | top-level fields, used directly                                                                |
+| **Any** session replay (Q replay, FP replay) | ✓ populated            | ✓ populated                              | top-level fields, reconstructed by the replay layer                                            |
+| **Live Practice / Qualifying / Sprint Shootout** | `""` (empty string) or absent | `null` or `{ Value: "" }`         | `Lines[N].Stats[0].TimeDiffToFastest` (= LDR) and `Lines[N].Stats[0].TimeDifftoPositionAhead` (= INT) |
+
+This caught us in production on 2026-06-06 during live Q1 — every driver showed `LDR` for the leader (correct) but blank `INT` and `LDR` for everyone else. The same session worked fine on replay 10 minutes later because the replay layer fills `GapToLeader` / `IntervalToPositionAhead.Value` back in for Q sessions.
+
+**Mitigation in the codebase:** both `picker/Services/LiveTimingClient.cs` and `MultiViewer/TimingDataDecoder.cs` read the top-level fields first, then fall back to `Stats[0].TimeDiffToFastest` / `Stats[0].TimeDifftoPositionAhead` when the top-level value comes back empty. The fastest driver still gets `""` from MV in either shape, and the picker continues to render that as `LDR`, so the leader badge keeps working without any special-casing.
+
+**MV's spelling, not ours:** the second field is `TimeDif`**`f`**`to`**`P`**`ositionAhead` — lowercase `t` in `to`, uppercase `P` in `Position`. This is the actual JSON key returned by MV, not a typo in the codebase. Do not "correct" it.
+
+### How to verify on your own box
+
+While MV is connected to a live FP / Q / SQ session, hit the endpoint directly:
+
+```pwsh
+curl http://localhost:10101/api/v1/live-timing/TimingData |
+  ConvertFrom-Json |
+  ForEach-Object { $_.Lines.PSObject.Properties[0].Value } |
+  Select-Object Position,GapToLeader,IntervalToPositionAhead,Stats
+```
+
+`GapToLeader` will be empty, `IntervalToPositionAhead` will be null or `Value=""`, but `Stats[0]` will have the two `TimeDiff*` fields filled in.
+
+---
+
 ## Probes you should *not* rely on
 
 The following endpoints are tempting but not reliable signals of "Live Timing is on":

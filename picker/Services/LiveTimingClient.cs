@@ -238,14 +238,31 @@ public sealed class LiveTimingClient : IDisposable
                 }
             }
 
-            // MV's TimingData exposes GapToLeader as a top-level string ("+9.322",
-            // "1 L" for lapped cars, "" for leader) and IntervalToPositionAhead as
-            // a nested object whose .Value is the gap to the car immediately ahead.
-            // Older drafts of this client used TimeDiffToFastest / TimeDiffToPositionAhead,
-            // which are signalr-internal names — they don't exist on the public payload,
-            // so both fields silently returned "" and the INT / LDR columns were blank.
+            // Race / replay shape: GapToLeader is a top-level string ("+9.322",
+            // "1 L" for lapped cars, "" for leader) and IntervalToPositionAhead is a
+            // nested object whose .Value is the gap to the car immediately ahead.
+            //
+            // Practice / Qualifying LIVE shape: those two top-level fields are absent
+            // (MV's live SignalR feed only emits per-stat blocks for non-race sessions).
+            // Gaps live in Stats[0] as TimeDiffToFastest (= gap to fastest, our LDR) and
+            // TimeDifftoPositionAhead (= gap to driver ahead = INT). Note MV's typo:
+            // lowercase 't' in "TimeDif*f*to*P*ositionAhead". Replay sessions populate
+            // GapToLeader/IntervalToPositionAhead even in Q because the replay layer
+            // reconstructs them, which is why this only broke on live qualifying.
             string gapToLeader = line["GapToLeader"]?.GetValue<string>() ?? "";
             string interval = line["IntervalToPositionAhead"]?["Value"]?.GetValue<string>() ?? "";
+            if (string.IsNullOrEmpty(gapToLeader) || string.IsNullOrEmpty(interval))
+            {
+                var statsArr = line["Stats"] as JsonArray;
+                var stats0 = statsArr != null && statsArr.Count > 0 ? statsArr[0] as JsonObject : null;
+                if (stats0 != null)
+                {
+                    if (string.IsNullOrEmpty(gapToLeader))
+                        gapToLeader = stats0["TimeDiffToFastest"]?.GetValue<string>() ?? "";
+                    if (string.IsNullOrEmpty(interval))
+                        interval = stats0["TimeDifftoPositionAhead"]?.GetValue<string>() ?? "";
+                }
+            }
 
             bool inPit = line["InPit"]?.GetValue<bool>() ?? false;
             bool retired = line["Retired"]?.GetValue<bool>() ?? false;

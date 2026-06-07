@@ -177,6 +177,34 @@ public sealed class IdleDashboardService
                     continue;
                 }
 
+                // v1.5.0 safety: do NOT clobber a user's existing IDLE dashboard selection
+                // unless it looks like a SimHub default or one of our own prior selections.
+                // Mirrors the v1.4.0 LED activeProfileId safety logic.
+                bool safeToOverwrite =
+                    string.IsNullOrWhiteSpace(before)
+                    || before!.StartsWith("Default", StringComparison.OrdinalIgnoreCase)
+                    || before.StartsWith("SimHub", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(before, dashboardName, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(before, "F1RaceSim", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(before, "F1RaceSim_HyperP1", StringComparison.OrdinalIgnoreCase);
+
+                if (!safeToOverwrite)
+                {
+                    log?.Invoke(
+                        $"Device '{d.DisplayName}': existing IDLE dashboard '{before}' preserved. " +
+                        $"F1SimHubLive dashboard '{dashboardName}' installed but not auto-activated. " +
+                        $"To use it, open SimHub > Devices > '{d.DisplayName}' > LCD and pick '{dashboardName}' for the IDLE screen.");
+                    changes.Add(new IdleDashboardChange
+                    {
+                        InstanceId = d.InstanceId,
+                        DisplayName = d.DisplayName,
+                        Before = before,
+                        After = before ?? "",
+                        Modified = false,
+                    });
+                    continue;
+                }
+
                 var backup = $"{d.SettingsFile}.preF1SimHubLive-{stamp}";
                 File.Copy(d.SettingsFile, backup, overwrite: false);
                 log?.Invoke($"Device '{d.DisplayName}': backed up settings.json -> {Path.GetFileName(backup)}");

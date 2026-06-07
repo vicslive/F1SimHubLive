@@ -6,6 +6,35 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-06-07
+
+### Added
+- **Plugin auto-switches LED profiles when MultiViewer starts / stops** — eliminates the v1.4.x manual step where the user had to open *SimHub > Devices > GSI Formula Pro Elite V2 > LEDs* and pick `F1SimHubLive` for each of the three sections (Buttons, Telemetry, Individual). New `LedRuntimeSwitcher` class is wired into `F1SimHubLivePlugin.UpdateMultiViewerRunning()`: every time the 5-sec process poll detects a false→true transition, it snapshots the device's current `activeProfileId` for each LED section, then sets ours active. On the true→false transition, it restores the snapshot.
+
+  Behavior matrix (per device, per LED section):
+
+  | At MV start, current selection is… | Action |
+  |---|---|
+  | Already F1SimHubLive | No-op |
+  | Anything else (Forza, AC, iRacing, Default…) | Snapshot it, set F1SimHubLive active |
+
+  | At MV stop, current selection is… | Action |
+  |---|---|
+  | Still F1SimHubLive | Restore the snapshotted profile |
+  | User manually changed it during the MV session | Leave the user's choice alone, discard snapshot |
+  | F1SimHubLive but no snapshot recorded (SimHub restarted while MV was up) | Leave F1SimHubLive active; user can re-pick manually if desired |
+
+  Writes are atomic (temp file + `File.Replace`) so SimHub's `FileSystemWatcher` sees one clean state every cycle — same pattern the picker has been using for our own settings file since v1.4.1. Runs on a `ThreadPool.QueueUserWorkItem` so file I/O can't stall the 5-sec poll timer. Multi-device safe: iterates every directory under `PluginsData\Common\Devices\<guid>\` and skips anything whose `DeviceTypeID` is not GSI FPE V2 (`EFC17674-559A-44DB-8D24-C6CFD203384D`).
+
+  Effect: Vic's Media PC (clean install, no racing profiles) will now go from no-LEDs-at-all to fully-lit within ~5 seconds of launching MultiViewer, without ever opening the SimHub Devices page. His dev box (SupermanOne, F1 2025 + AC Rally setups intact) will see Forza/F1 2025 profiles preserved when not viewing F1, and auto-switch to F1SimHubLive only while MultiViewer is up.
+
+- **New `scripts/Check-VersionAlignment.ps1` + CI gate** — verifies all three csproj `<Version>` values (plugin, picker, installer) agree with each other and with the git tag. v1.4.0 shipped with the picker and plugin csprojs still saying `1.3.9` while the installer csproj said `1.4.0`; CI now fails fast on this kind of slip. Run locally with `pwsh ./scripts/Check-VersionAlignment.ps1 -Expected 1.5.0`.
+
+### Changed
+- **`IdleDashboardService` now respects user's existing IDLE dashboard selection.** v1.4.x always overwrote `CurrentIdleDashboard` to `F1RaceSim_GSIFPEV2` on every install, even if the user had picked something else. New safety rule (mirrors the v1.4.0 LED `activeProfileId` safety check): only overwrite when the current value is null/empty, starts with `Default`/`SimHub`, or is one of our own prior selections (`F1RaceSim`, `F1RaceSim_HyperP1`, `F1RaceSim_GSIFPEV2`). Otherwise log "preserved. F1SimHubLive dashboard installed but not auto-activated. To use it, open SimHub > Devices > … > LCD and pick …" and leave the user's choice intact.
+
+- All three csproj `<Version>` values bumped to `1.5.0` together (plugin, picker, installer). Validated by the new alignment check.
+
 ## [1.4.1] — 2026-06-07
 
 ### Added

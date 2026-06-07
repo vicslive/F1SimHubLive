@@ -36,9 +36,13 @@ namespace F1SimHubLive
         // F1SimHubLive.MultiViewerRunning bool property. LED-profile TriggerFormulas
         // gate on this so our LEDs only fire while the user is in F1-viewing mode
         // (MultiViewer is up), and stay dark when the user is gaming or just idle.
+        // v1.5.0: on every transition we also drive _ledRuntimeSwitcher to flip
+        // each device's LED activeProfileId to ours (and restore on MV-down) so the
+        // user no longer has to manually pick F1SimHubLive in SimHub > Devices > LEDs.
         private System.Threading.Timer? _mvProcessTimer;
         private bool _mvLastSeen;
         private const int MvProcessPollMs = 5000;
+        private LedRuntimeSwitcher? _ledRuntimeSwitcher;
 
         public void Init(PluginManager pluginManager)
         {
@@ -129,6 +133,27 @@ namespace F1SimHubLive
             Register("FlagText", "");
             Register("Status", "Initializing");
             Register("MultiViewerRunning", false);
+
+            // v1.5.0 runtime LED switcher: locates the SimHub install root from
+            // where this plugin DLL is loaded, then on MV transitions snapshots
+            // and flips each device's LED activeProfileId so the user gets
+            // automatic switching instead of having to pick F1SimHubLive manually.
+            try
+            {
+                var simhubInstallDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                if (!string.IsNullOrEmpty(simhubInstallDir))
+                {
+                    _ledRuntimeSwitcher = new LedRuntimeSwitcher(simhubInstallDir!, Log);
+                }
+                else
+                {
+                    Log("LedRuntimeSwitcher: could not resolve SimHub install directory; runtime LED switching disabled.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"LedRuntimeSwitcher: init failed ({ex.Message}); runtime LED switching disabled.");
+            }
 
             // Kick the MultiViewer process check immediately so the property has a
             // truthful initial value before SimHub starts evaluating LED triggers,
@@ -485,6 +510,20 @@ namespace F1SimHubLive
             {
                 Log(running ? "MultiViewer detected (LEDs will activate)" : "MultiViewer no longer running (LEDs will deactivate)");
                 _mvLastSeen = running;
+
+                // v1.5.0: flip device-side LED activeProfileId on every transition
+                // so the user doesn't need to manually pick F1SimHubLive in SimHub.
+                // Done OFF the SimHub thread so file I/O can't stall the poll timer.
+                if (_ledRuntimeSwitcher != null)
+                {
+                    var switcher = _ledRuntimeSwitcher;
+                    var direction = running;
+                    System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        try { switcher.OnMultiViewerRunningChanged(direction); }
+                        catch (Exception ex) { Log($"LedRuntimeSwitcher transition failed: {ex.Message}"); }
+                    });
+                }
             }
             SetProp("MultiViewerRunning", running);
         }

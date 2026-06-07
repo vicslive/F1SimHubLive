@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.5.3] — 2026-06-07
+
+### Fixed
+- **The v1.5.2 `RpmShiftLight` migration didn't actually reach the file the plugin reads.** v1.5.2 changed the in-installer migration to detect the pre-1.5.2 default pair `(5500, 11500)` and upgrade it to `(3500, 13000)` — but the upgrade was only written to the machine-wide **PROGRAMDATA** seed (`%PROGRAMDATA%\F1SimHubLive\F1SimHubLive.Settings.json`). The plugin and picker both read from per-user **APPDATA** (`%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json`), and the resolver only copies PROGRAMDATA → APPDATA on **first** launch. Anyone who had installed any v1.4.x / v1.5.0 / v1.5.1 build already had an APPDATA file with the saturated `(5500, 11500)` values, and v1.5.2 never touched it — so the white-flash redline + non-sequential gradient symptoms persisted exactly as before.
+
+  Reproduced on Vic's Media PC: installed v1.5.2, wheel still flashed white at 11,300 RPM (which is 96.7% of the 5500–11500 range = solidly inside the Redline 1 + Redline 2 bands, exactly the visible symptom).
+
+  Fix: new `AppDataSettingsMigrationService` runs after `WriteSettings()` in the installer's `Deployer`. It walks every user profile's APPDATA folder (the installer is elevated, so writes into other users' profiles succeed), parses each `F1SimHubLive.Settings.json`, and rewrites the `RpmShiftLight*` values **only** when the exact pre-1.5.2 default pair `(5500, 11500)` is present. Any other value pair is treated as an intentional customization and preserved. Each modified file gets a timestamped `.preAppDataMigration-<stamp>` backup next to the original, and writes are atomic (sibling temp file + rename) so the plugin's `FileSystemWatcher` never sees a partial JSON document.
+
+  Workaround for users who already installed v1.5.2 and don't want to wait for v1.5.3: open `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json` in Notepad, change `RpmShiftLightStartRpm` from `5500` to `3500` and `RpmShiftLightEndRpm` from `11500` to `13000`, save. The plugin reloads within ~250 ms via its FileSystemWatcher — no SimHub restart needed.
+
+- **Picker LED-preview bar stayed dark when MultiViewer was on a non-default URL.** The driver picker hardcoded `http://localhost:10101` as the MultiViewer base URL and ignored the `MultiViewerBaseUrl` field in the settings file. The plugin (which DOES read it from settings) would happily talk to MV on whatever URL the install wizard captured, but the picker's HTTP polling silently hit nothing — so the wheel would light up correctly while the picker's preview strip sat dim. Fixed by reading `MultiViewerBaseUrl` from the settings file when the `--mv-url` CLI override is not provided. Falls back to `http://localhost:10101` if the field is missing or fails loopback-URL validation (same validation rule the plugin's `Settings.Validate` uses, so a malformed or attacker-edited URL can't redirect the picker either).
+
+  `SettingsFileWriter.ReadMultiViewerBaseUrl()` is the new helper; `MainWindow` consumes it once in the constructor, in the order: CLI arg → settings file → default. Picker reads the file freshly on every launch — no caching, no further migration logic required.
+
 ## [1.5.2] — 2026-06-07
 
 ### Changed

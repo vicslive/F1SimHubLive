@@ -81,7 +81,14 @@ public partial class MainWindow : Window
 
         var (settingsPath, mvUrl) = ParseArgs(Environment.GetCommandLineArgs());
         _settingsPath = settingsPath ?? DefaultSettingsPath();
-        _mvUrl = mvUrl ?? DefaultMvUrl;
+        // v1.5.3: if the user didn't pass --mv-url, read MultiViewerBaseUrl from the
+        // settings file the plugin is also reading. This keeps the picker pointed at
+        // the same MultiViewer the wheel is being driven from -- before v1.5.3 the
+        // picker hardcoded localhost:10101 so any non-default MV URL left the picker's
+        // LED-preview bar dark even when the wheel lit up correctly.
+        _mvUrl = mvUrl
+            ?? SettingsFileWriter.ReadMultiViewerBaseUrl(_settingsPath)
+            ?? DefaultMvUrl;
         _liveTimingClient = new LiveTimingClient(Dispatcher, _mvUrl);
         _sessionInfoClient = new SessionInfoClient(Dispatcher, _mvUrl);
         SessionHeaderBar.DataContext = _sessionInfoClient.Model;

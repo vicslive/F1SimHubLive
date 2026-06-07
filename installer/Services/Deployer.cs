@@ -50,6 +50,7 @@ public sealed class Deployer
     private readonly IdleDashboardService _idle = new();
     private readonly LedConfigRewireService _ledRewire = new();
     private readonly LedProfileSeederService _ledSeeder = new();
+    private readonly AppDataSettingsMigrationService _appDataMigration = new();
 
     /// <summary>
     /// Per-device idle-dashboard changes recorded during the last deploy. Empty when
@@ -70,6 +71,12 @@ public sealed class Deployer
     /// devices that aren't on the supported-wheels list.
     /// </summary>
     public List<LedProfileSeedChange> LastLedProfileSeedChanges { get; private set; } = new();
+
+    /// <summary>
+    /// Per-user APPDATA settings.json migration results recorded during the last deploy
+    /// (v1.5.3+). Empty when no APPDATA settings file exists on any user profile.
+    /// </summary>
+    public List<AppDataSettingsMigrationChange> LastAppDataMigrationChanges { get; private set; } = new();
 
     private void L(string msg) => Log?.Invoke(msg);
     private void P(int pct) => Progress?.Invoke(pct);
@@ -120,6 +127,30 @@ public sealed class Deployer
         L($"Writing Settings.json for driver #{opts.DriverNumber} (source: {opts.Source})...");
         WriteSettings(opts);
         P(85);
+
+        // v1.5.3: WriteSettings only updates the PROGRAMDATA seed. The plugin and picker
+        // actually read from per-user APPDATA, which the resolver only seeds from PROGRAMDATA
+        // on FIRST launch -- after that it sticks. So every user upgrading from v1.4.x / v1.5.0
+        // / v1.5.1 had old pre-1.5.2 defaults baked into their APPDATA and the v1.5.2 "tuned
+        // defaults" never reached them. This walks every user profile's APPDATA and migrates
+        // any pre-1.5.2 RpmShiftLight default pair in-place.
+        L("");
+        L("Migrating per-user APPDATA settings (v1.5.2 RpmShiftLight defaults)...");
+        LastAppDataMigrationChanges = _appDataMigration.MigrateAllUserProfiles(L);
+        int patchedProfiles = LastAppDataMigrationChanges.Count(c => c.Modified);
+        if (patchedProfiles > 0)
+        {
+            L($"APPDATA migration: patched RpmShiftLight defaults in {patchedProfiles} user profile(s). "
+                + $"Wheel LEDs will stop saturating to white-flash redline on next plugin reload.");
+        }
+        else if (LastAppDataMigrationChanges.Count == 0)
+        {
+            L("APPDATA migration: no per-user settings files found (fresh install, nothing to migrate).");
+        }
+        else
+        {
+            L("APPDATA migration: scanned per-user settings files, no pre-1.5.2 default pairs found.");
+        }
 
         L("");
         L("Scanning per-device LED configurations for stale plugin-name references...");

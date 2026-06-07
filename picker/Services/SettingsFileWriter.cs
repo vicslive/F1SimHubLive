@@ -58,6 +58,41 @@ internal static class SettingsFileWriter
     }
 
     /// <summary>
+    /// Reads the MultiViewer base URL from the settings file so the picker polls
+    /// the same MultiViewer instance the plugin polls. Returns <c>null</c> when
+    /// the file is missing, malformed, the field is absent, or the stored value
+    /// is not an http loopback URL (matches <see cref="Settings.Validate"/> on
+    /// the plugin side). Caller falls back to the picker's own default in that
+    /// case.
+    ///
+    /// <para>Why we need this: prior to v1.5.3 the picker hardcoded
+    /// <c>http://localhost:10101</c> and ignored the settings file entirely.
+    /// If MultiViewer was bound to a non-default URL the plugin still worked
+    /// (it reads from settings) but the picker's LED-preview bar stayed dim
+    /// because its HTTP polls hit nothing.</para>
+    /// </summary>
+    public static string? ReadMultiViewerBaseUrl(string settingsPath)
+    {
+        try
+        {
+            if (!File.Exists(settingsPath)) return null;
+            using var doc = JsonDocument.Parse(File.ReadAllText(settingsPath));
+            if (!doc.RootElement.TryGetProperty("MultiViewerBaseUrl", out var v)) return null;
+            if (v.ValueKind != JsonValueKind.String) return null;
+            string? raw = v.GetString();
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            if (!Uri.TryCreate(raw, UriKind.Absolute, out var uri)) return null;
+            if (uri.Scheme != Uri.UriSchemeHttp) return null;
+            if (!uri.IsLoopback) return null;
+            return raw;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Replaces DriverNumber in the settings file with the given value, atomically.
     /// Throws on IO / permission failures so the UI can surface them.
     /// </summary>

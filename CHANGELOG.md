@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.5.7] — 2026-06-07
+
+### Changed
+- **Wheel LCD signature layout polish** (Media-PC verification feedback from v1.5.6): `@vicslive` was over-corrected to the far left in v1.5.6 — moved it back to sit directly above the `github | instagram | Ver. X.X.X` strip (both elements now share `Left=442, Width=340`, both center-aligned, so the cyan handle is perfectly vertically aligned with the gray meta line beneath it). Also shifted the meta strip ~10 px right (`Left 432 → 442`) so it doesn't kiss the left edge of the right panel.
+
 ## [1.5.6] — 2026-06-07
 
 ### Added

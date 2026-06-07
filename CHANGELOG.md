@@ -6,6 +6,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-06-07
+
+### Fixed
+- **Critical: all F1SimHubLive LED profiles dark on fresh installs of v1.4.0 / v1.4.1 / v1.5.0.** The Telemetry and Prime Gradient seed-asset JSONs shipped a typo in their master-gate trigger expressions: `if([F1SimHubLive.MultiViewerRunning] = 1, 1, 0)` instead of `if([F1SimHubLivePlugin.MultiViewerRunning] = 1, 1, 0)`. SimHub exposes plugin properties under the plugin **class name** (`F1SimHubLivePlugin`), NOT the `[PluginName]` attribute value (`F1SimHubLive`) — every other binding in those profiles correctly used `F1SimHubLivePlugin.*`, only the two master gates carried the typo. NCalc evaluated the broken gate to null (`Value cannot be null. Parameter name: conversionType`), which cascaded to disable every child LED container in the profile. Symptom on a fresh install: LCD works perfectly (LCD bindings used the correct namespace) but the LED bar stays completely dark even while MultiViewer is running.
+
+  Bug never surfaced before today because no one had run the installer on a clean box since the typo was introduced in v1.4.0 — Vic's dev box (SupermanOne) was running his hand-crafted v1.0 profiles with `DataCorePlugin.GameRunning` and never touched. The Media PC was the first true fresh install of the v1.4.0+ generation.
+
+  Fix is two-pronged: (1) seed-asset JSONs (`installer/Assets/LedProfiles/leds-F1SimHubLive-Telemetry.json` and `raw-F1SimHubLive-PrimeGradient.json`) are corrected so new installs are clean from the start, and (2) `LedConfigRewireService` gained a new `SpecificRewrites` table that auto-heals existing v1.4.0/1.4.1/1.5.0 installs: it rewrites `F1SimHubLive.MultiViewerRunning` → `F1SimHubLivePlugin.MultiViewerRunning` in place in each device's `settings.json`, with the same backup + atomic-write discipline used by the existing legacy-plugin-prefix rewrites. A broad `F1SimHubLive.` prefix rewrite was intentionally avoided — kept as a narrow surgical replacement to prevent over-matching any unrelated future settings keys.
+
+  Effect: install v1.5.1 over the broken state → installer logs `rewired 1 legacy plugin reference(s)` per device, LED profile lights up on next MultiViewer launch with zero further user intervention.
+
 ## [1.5.0] — 2026-06-07
 
 ### Added

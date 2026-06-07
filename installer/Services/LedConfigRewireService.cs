@@ -51,6 +51,26 @@ public sealed class LedConfigRewireService
     };
 
     /// <summary>
+    /// Surgical (old, new) rewrites applied after prefix rewrites. Use for narrow,
+    /// known-buggy bindings where a broad prefix replace would over-match.
+    /// </summary>
+    /// <remarks>
+    /// Background: seed assets shipped in v1.4.0 / v1.4.1 / v1.5.0 carried a typo in the
+    /// Telemetry and Prime Gradient master-gate triggers — <c>F1SimHubLive.MultiViewerRunning</c>
+    /// instead of the correct <c>F1SimHubLivePlugin.MultiViewerRunning</c>. Properties in
+    /// SimHub are exposed under the plugin <em>class name</em> (<c>F1SimHubLivePlugin</c>),
+    /// not the <c>[PluginName]</c> attribute value (<c>F1SimHubLive</c>). The typo killed
+    /// the master gate on every fresh install of those versions; all child LED containers
+    /// cascaded dark. Fixed in seeds v1.5.1+; this rewrite heals existing installs in place.
+    /// A broad <c>F1SimHubLive.</c> prefix replace is intentionally avoided here because
+    /// it could collide with hypothetical future settings keys (defensive).
+    /// </remarks>
+    public static readonly (string From, string To)[] SpecificRewrites =
+    {
+        ("F1SimHubLive.MultiViewerRunning", "F1SimHubLivePlugin.MultiViewerRunning"),
+    };
+
+    /// <summary>
     /// Scans every SimHub device's <c>settings.json</c> under
     /// <c>&lt;simHubInstallDir&gt;\PluginsData\Common\Devices\</c>, replaces any legacy
     /// plugin-name references with <see cref="TargetPluginPrefix"/>, and writes a
@@ -94,6 +114,13 @@ public sealed class LedConfigRewireService
                     if (c == 0) continue;
                     totalCount += c;
                     patched = patched.Replace(legacy, TargetPluginPrefix);
+                }
+                foreach (var (from, to) in SpecificRewrites)
+                {
+                    var c = CountOccurrences(patched, from);
+                    if (c == 0) continue;
+                    totalCount += c;
+                    patched = patched.Replace(from, to);
                 }
 
                 if (totalCount == 0)

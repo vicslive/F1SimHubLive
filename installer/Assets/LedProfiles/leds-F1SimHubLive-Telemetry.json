@@ -11,7 +11,7 @@
   "LedContainers": [
     {
       "TriggerFormula": {
-        "Expression": "if([F1SimHubLive.MultiViewerRunning] = 1, 1, 0)"
+        "Expression": "if([F1SimHubLivePlugin.MultiViewerRunning] = 1, 1, 0)"
       },
       "LedContainers": [
         {

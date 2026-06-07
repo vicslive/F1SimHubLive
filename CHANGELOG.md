@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.5.2] — 2026-06-07
+
+### Changed
+- **`RpmShiftLight` defaults tightened to match real-world F1 V6 hybrid RPM ranges.** Pre-1.5.2 defaults of `RpmShiftLightStartRpm=5500` / `RpmShiftLightEndRpm=11500` were too narrow for modern F1 cars, which routinely rev to 12–14k RPM on DRS straights. The result on a fresh install: the wheel LED bar pinned to redline (white flash) almost constantly through normal racing, and the gradient could not fill sequentially because RPM exceeded the ceiling — individual LEDs lit non-contiguously as RPM bounced back and forth across thresholds (e.g. one green lit, then a gap of dark LEDs, then blues). v1.5.2 ships `3500` / `13000` as the new defaults — empirically tuned on Vic's dev box (SupermanOne) over months of live F1 broadcast viewing through MultiViewer, with the GSI Formula Pro Elite V2 wheel. The new range gives greens visible during pit-lane out-laps and slow corners, smooth gradient fills through most of a normal lap, and redline white flash only when the car actually approaches its peak (≥12.5k RPM).
+
+  Updated in: `F1SimHubLive/Settings.cs`, `installer/Services/Deployer.cs`, `picker/MainWindow.xaml.cs`, `picker/Services/SettingsFileWriter.cs`, `README.md`.
+
+### Added
+- **Installer auto-migrates existing users still on the pre-1.5.2 default pair.** If `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json` contains the exact pair `RpmShiftLightStartRpm=5500` / `RpmShiftLightEndRpm=11500`, the v1.5.2 installer treats it as "user never opened the picker" and upgrades them in place to the new `3500` / `13000` defaults, with a log notice explaining what happened and pointing to the picker for further tuning. Any other value pair is treated as an intentional customization and preserved as-is (existing v1.5.1 preservation behavior).
+
+  This catches Vic's Media PC (fresh v1.4.0+ install → seeded with the old defaults) without forcing him to delete his settings file. Any user who manually tuned to something other than (5500, 11500) is left alone.
+
+### Why this was missed before
+The 5500/11500 defaults shipped in v1.3.x as "calibrated" values, but they were calibrated against the assumption that LED telemetry profiles would care about *typical* RPM, not peak RPM. The Telemetry profile bands actually trigger on `RpmShiftPercent` thresholds, which means peak-RPM saturation is what matters most — and on real F1 broadcasts modern PUs sustain 12-14k far more than the original tuning assumed. Vic tuned his dev box to 3500/13000 manually months ago, the wheel worked beautifully, and the original defaults were never revisited. The Media PC (first true fresh v1.4.0+ install, see v1.5.1 notes) made the gap visible — LEDs were "going crazy" because the defaults were genuinely wrong, not because of a code bug.
+
 ## [1.5.1] — 2026-06-07
 
 ### Fixed

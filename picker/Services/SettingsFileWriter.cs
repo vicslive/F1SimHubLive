@@ -36,13 +36,13 @@ internal static class SettingsFileWriter
 
     /// <summary>
     /// Reads the shift-light RPM range from the settings file. Falls back to
-    /// the plugin's defaults (5500 / 14000) if the file is missing,
+    /// the plugin's defaults (3500 / 13000) if the file is missing,
     /// malformed, or the fields aren't present.
     /// </summary>
     public static (int startRpm, int endRpm) ReadShiftLightRange(string settingsPath)
     {
-        const int defaultStart = 5500;
-        const int defaultEnd = 14000;
+        const int defaultStart = 3500;
+        const int defaultEnd = 13000;
         try
         {
             if (!File.Exists(settingsPath)) return (defaultStart, defaultEnd);

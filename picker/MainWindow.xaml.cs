@@ -49,8 +49,8 @@ public partial class MainWindow : Window
     private static readonly Brush BlueLedBrush = new SolidColorBrush(Color.FromRgb(0x3C, 0x9C, 0xF0));
     private static readonly Brush RedLedBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0x3A, 0x3A));
     private static readonly Brush WhiteLedBrush = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xFA));
-    private int _startRpm = 5500;
-    private int _endRpm = 14000;
+    private int _startRpm = 3500;
+    private int _endRpm = 13000;
     private double _lastRpm;
     private bool _suppressSliderWrite; // true while loading from settings
     private bool _suppressAutoLaunchWrite; // true while seeding checkbox from settings

@@ -294,6 +294,26 @@ public sealed class Deployer
                     && se.ValueKind == JsonValueKind.Number
                     && se.TryGetInt32(out var endRpm)) existingRpmShiftEnd = endRpm;
 
+                // v1.5.2 migration: the pre-1.5.2 default pair was (5500, 11500),
+                // which is too narrow for modern F1 V6 hybrid PUs that routinely
+                // rev 12-14k RPM on DRS straights. The result was a wheel LED bar
+                // pinned to full redline / white flash through most of a lap,
+                // with non-sequential gradient fills because RPM exceeded the
+                // ceiling. Any user who is STILL on that exact default pair
+                // never tuned them through the picker -- treat them as "unset"
+                // so they fall through to the new (3500, 13000) tuned defaults.
+                // Any other value pair is treated as an intentional customization
+                // and preserved as-is.
+                if (existingRpmShiftStart == 5500 && existingRpmShiftEnd == 11500)
+                {
+                    L("Detected pre-1.5.2 default RpmShiftLight pair (5500, 11500) -- "
+                        + "this is too narrow for modern F1 PUs and causes the LED bar "
+                        + "to saturate to redline. Upgrading to v1.5.2 tuned defaults (3500, 13000). "
+                        + "Use the picker to adjust if you prefer different values.");
+                    existingRpmShiftStart = null;
+                    existingRpmShiftEnd = null;
+                }
+
                 L($"Existing settings found at '{candidate}' — preserving "
                     + $"AutoLaunchPicker={existingAutoLaunch?.ToString() ?? "(unset)"}, "
                     + $"OutputHz={existingOutputHz?.ToString() ?? "(unset)"}, "
@@ -318,8 +338,8 @@ public sealed class Deployer
             MultiViewerPollMs = opts.MultiViewerPollMs,
             MultiViewerTimingPollMs = opts.MultiViewerTimingPollMs,
             AutoLaunchPicker = existingAutoLaunch ?? opts.AutoLaunchPicker,
-            RpmShiftLightStartRpm = existingRpmShiftStart ?? 5500,
-            RpmShiftLightEndRpm = existingRpmShiftEnd ?? 11500,
+            RpmShiftLightStartRpm = existingRpmShiftStart ?? 3500,
+            RpmShiftLightEndRpm = existingRpmShiftEnd ?? 13000,
         };
         var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
         File.WriteAllText(settingsPath, json, new UTF8Encoding(false));

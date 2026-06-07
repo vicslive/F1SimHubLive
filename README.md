@@ -630,8 +630,8 @@ powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1 -StartSimHub   # dep
 |---|---|---|
 | `DriverNumber` | `"44"` | F1 racing number string. `44`=Hamilton, `1`=Verstappen, `16`=Leclerc, `81`=Piastri, `4`=Norris, `63`=Russell, `55`=Sainz, `14`=Alonso, `11`=Pérez, `18`=Stroll. **Hot-reloadable in v1.1.0+** — changing this value (via JSON edit or the Driver Picker) is picked up by the plugin within ~250ms without restarting SimHub. |
 | `OutputHz` | `60` | Interpolation tick rate for car telemetry. 60 is plenty for LEDs; higher just uses more CPU. |
-| `RpmShiftLightStartRpm` | `5500` | RPM at which `RpmShiftPercent` reads 0%. Lower this to make greens light earlier during pit lane / out-laps. Hot-reloads. |
-| `RpmShiftLightEndRpm` | `11500` | RPM at which `RpmShiftPercent` reads 100% (full bar). Raise this if your team's PU peaks higher and you want headroom; lower it for an even more reactive bar. Hot-reloads. |
+| `RpmShiftLightStartRpm` | `3500` | RPM at which `RpmShiftPercent` reads 0%. Lower this to make greens light earlier during pit lane / out-laps. Hot-reloads. |
+| `RpmShiftLightEndRpm` | `13000` | RPM at which `RpmShiftPercent` reads 100% (full bar). Raise this if your team's PU peaks higher and you want headroom; lower it for an even more reactive bar. Hot-reloads. |
 | `RenderDelayMs` | `200` | Render lag. Holds 200ms of buffer so the interpolator always has `prev` + `curr` snapshots to interpolate between. Lower = less added latency but more "hold" between samples. |
 | `Source` | `"F1Live"` | `F1Live` (broadcast SignalR) or `MultiViewer` (local replay). |
 | `MultiViewerBaseUrl` | `http://localhost:10101` | F1 MultiViewer HTTP API root. Only used when `Source=MultiViewer`. |

@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-06-07
+
+### Added
+- **SimHub Custom Game auto-seeding.** Installer now creates an `F1SimHubLive` custom game entry in `<SimHub>\PluginsData\CustomGames.json` so SimHub auto-switches its "active game" pointer to F1SimHubLive the moment MultiViewer for F1 launches. Previously SimHub stayed attached to whatever real game it last saw (often Forza, AC, iRacing), which meant any per-game LED/dashboard/motion settings tied to those titles bled into F1-viewing sessions. With the custom game tied to the `MultiViewer` process name, SimHub has a clean game identity for F1 use.
+
+  Implementation (new file `installer\Services\CustomGameSeederService.cs`):
+    - Deterministic `Code` field — every install on every machine references the same custom game identifier `Custom_f15ec0de-f1f1-f1f1-f1f1-f15ecf15ecf1`, useful for cross-machine config portability and any future per-game LED binding work.
+    - MultiViewer auto-detect — scans `%LOCALAPPDATA%\multiviewer\MultiViewer.exe`, Windows uninstall registry entries (CurrentUser + LocalMachine 32/64), and `%ProgramFiles%\MultiViewer\MultiViewer.exe`. If found, the SimHub "Launch Game" button works out of the box. If not found, `StartPath` is left null — process detection still flips SimHub to F1SimHubLive the moment the user launches MultiViewer manually.
+    - `ProcessNames = "MultiViewer"`, `UseAutomaticDetection = true` (game-switching radio), `UseProcessDetectionToActivateGame = false` (stronger activation toggle — switching alone is sufficient).
+    - Full `InputsToTelemetrySettings` default block included verbatim from a reference custom game (SimHub appears to require the structure even when no motion mapping is wired).
+    - **Idempotent**: matches existing entries by `Name` (case-insensitive). If an `F1SimHubLive` custom game already exists — whether from a prior install or hand-created by the user via the SimHub UI — it is left COMPLETELY untouched. User edits (alternate process names, custom StartPath, manual toggle flips, motion mappings) are preserved.
+    - Backup written as `CustomGames.json.preCustomGameSeed-<timestamp>` before any modification.
+
+  Schema reverse-engineered by manually creating a custom game in SimHub's UI on Dev box, forcing a clean SimHub shutdown to flush the in-memory write (SimHub buffers `CustomGames.json` writes until process exit), and diffing the populated file. Documented inline in `CustomGameSeederService.cs` XMLdoc.
+
+### Investigation note
+- SimHub's `CustomGames.json` is held in memory until clean shutdown. Installer already stops SimHub before any settings write (see `Deployer.MaybeStopSimHub`), so seeding runs in a safe window. Verified by polling the file after manual creation — file stayed `[]` while SimHub was open, became 2318 bytes within seconds of SimHub exiting.
+
 ## [1.6.0] — 2026-06-07
 
 ### Fixed

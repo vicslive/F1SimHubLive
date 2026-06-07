@@ -51,6 +51,7 @@ public sealed class Deployer
     private readonly LedConfigRewireService _ledRewire = new();
     private readonly LedProfileSeederService _ledSeeder = new();
     private readonly AppDataSettingsMigrationService _appDataMigration = new();
+    private readonly CustomGameSeederService _customGameSeeder = new();
 
     /// <summary>
     /// Per-device idle-dashboard changes recorded during the last deploy. Empty when
@@ -77,6 +78,14 @@ public sealed class Deployer
     /// (v1.5.3+). Empty when no APPDATA settings file exists on any user profile.
     /// </summary>
     public List<AppDataSettingsMigrationChange> LastAppDataMigrationChanges { get; private set; } = new();
+
+    /// <summary>
+    /// Result of seeding SimHub's <c>PluginsData\CustomGames.json</c> with our
+    /// F1SimHubLive custom game (v1.7.0+). <c>null</c> until <see cref="DeployAsync"/>
+    /// runs. <see cref="CustomGameSeedResult.AlreadyPresent"/> is true on every install
+    /// after the first one.
+    /// </summary>
+    public CustomGameSeedResult? LastCustomGameSeedResult { get; private set; }
 
     private void L(string msg) => Log?.Invoke(msg);
     private void P(int pct) => Progress?.Invoke(pct);
@@ -198,6 +207,25 @@ public sealed class Deployer
             L("LED profile seed: no supported wheel found (the dashboard LCD area will work, but the wheel LEDs will only show Default Profile).");
         }
         P(90);
+
+        L("");
+        L("Seeding F1SimHubLive custom game in SimHub (so SimHub auto-switches to F1SimHubLive when MultiViewer launches)...");
+        LastCustomGameSeedResult = _customGameSeeder.SeedCustomGame(opts.SimHubInstallDir, L);
+        if (LastCustomGameSeedResult.Inserted)
+        {
+            var mvNote = LastCustomGameSeedResult.MultiViewerExePath != null
+                ? "MultiViewer install detected - SimHub Launch Game button will work."
+                : "MultiViewer not detected in standard install locations - launch MultiViewer manually and process detection will still flip SimHub to F1SimHubLive automatically.";
+            L($"Custom game seed: F1SimHubLive added to SimHub Settings > Custom games. {mvNote}");
+        }
+        else if (LastCustomGameSeedResult.AlreadyPresent)
+        {
+            L("Custom game seed: F1SimHubLive custom game already present - left untouched (your edits are safe).");
+        }
+        else if (LastCustomGameSeedResult.Error != null)
+        {
+            L($"Custom game seed: skipped - {LastCustomGameSeedResult.Error}");
+        }
 
         if (opts.SetIdleDashboard)
         {

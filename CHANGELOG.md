@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.7.1] — 2026-06-07
+
+### Fixed
+- **`ProfileSwitchingMode=1` now applied to ALL touched sections, not just sections we auto-activated into.** The v1.6.0 fix had a hidden hole: `LedProfileSeederService` would `continue;` out of the per-section loop in the "preserve user's existing active profile" branch, skipping the `EnsureSwitchingModeDisabled` call. That meant any section where the user already had a non-default profile selected (the typical state of the `leds` section after using SimHub with any racing game) was left in Mode 2 ("Last selected profile, per game"). Buttons and raw sections — usually on "Default Profile" or empty — were correctly flipped to Mode 1.
+
+  Combined with v1.7.0's custom-game seeding, this created a regression cascade on Dev box:
+    1. v1.7.0 installer added `F1SimHubLive` to `CustomGames.json`
+    2. SimHub auto-switched to that game on MultiViewer launch (working as designed)
+    3. `leds` section was on Mode 2, looked up `LastGameProfiles[Custom_<guid>]`, found nothing
+    4. Fell back to "Default Profile" — i.e., **Basic** — wiping the LED bar
+    5. User had to manually re-select F1SimHubLive every time
+
+  v1.7.1 removes the `continue;` so `EnsureSwitchingModeDisabled` runs unconditionally on any section we touched (with or without activating into it). The preserved active profile choice stays preserved; Mode 1 ensures SimHub actually honors it across game changes.
+
+  Verified against Vic's Dev box post-v1.7.0 state: `Settings.LEDS.leds.ProfileSwitchingMode = 2` (broken), `Settings.LEDS.buttons.ProfileSwitchingMode = 1` (working), `Settings.LEDS.raw.ProfileSwitchingMode = 1` (working) — exact pattern predicted by the bug analysis.
+
+### Design note
+- F1SimHubLive is opinionated about Mode 1 because the plugin's whole purpose is to show a stable LED profile for F1 viewing. Users who genuinely want per-game LED switching across multiple racing titles can re-enable Mode 2 manually in SimHub Settings > Telemetry, and our installer will not re-flip it without also seeding new profiles (the EnsureSwitchingModeDisabled call only runs inside the per-section seed loop, which runs only when there's something to seed). On a stable system where all profiles are present and active, no settings.json write happens at all.
+
 ## [1.7.0] — 2026-06-07
 
 ### Added

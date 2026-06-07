@@ -235,23 +235,39 @@ public sealed class LedProfileSeederService
                     else
                     {
                         log?.Invoke($"Device '{displayName}' / section '{section}': existing active profile '{currentActiveName ?? currentActive}' preserved. F1SimHubLive profile installed but not auto-activated. To use it, open SimHub > Devices > LEDs > '{section}' and select '{profileName}'.");
-                        // User has their own racing profile selected — don't touch their
-                        // ProfileSwitchingMode either. Their per-game switching is intentional.
-                        continue;
+                        // v1.7.1: do NOT skip the ProfileSwitchingMode fix below. Even when we
+                        // preserve the user's active profile, Mode 2 IGNORES activeProfileId and
+                        // re-derives the active profile per game — so any non-racing-game scenario
+                        // (idle, custom game like our F1SimHubLive_Custom seeded in v1.7.0, MultiViewer
+                        // running) will see the "Default Profile" instead of the preserved choice.
+                        // v1.7.0 install on Dev box reproduced this exactly: leds section had
+                        // Vic's "F1 Live" preserved (good), but SimHub at startup hit the new
+                        // F1SimHubLive custom game with no LastGameProfiles[Custom_<guid>] mapping,
+                        // fell back to Basic, broke the LED bar. Forcing Mode 1 here makes the
+                        // preserved activeProfileId stick across game changes, which is exactly
+                        // what a user who's been carefully curating a profile wants.
                     }
 
-                    // v1.6.0: When OUR profile is the active one in this section, force
-                    // ProfileSwitchingMode = 1 ("Disabled" in the SimHub UI's "Automatic
-                    // profile switching" radio group). In Mode 2 ("Last selected profile,
-                    // per game") SimHub IGNORES activeProfileId and uses LastGameProfiles
-                    // [currentGame] instead — which on most installs maps to "Default Profile".
-                    // Symptom on Vic's Media PC pre-v1.6.0: every SimHub restart showed
-                    // Default Profile in the dropdown despite activeProfileId pointing
-                    // at F1SimHubLive. Dev box was fine because it was already on Mode 1.
+                    // v1.6.0 + v1.7.1: Force ProfileSwitchingMode = 1 ("Disabled" in the SimHub
+                    // UI's "Automatic profile switching" radio group) on every section we touched.
+                    // In Mode 2 ("Last selected profile, per game") SimHub IGNORES activeProfileId
+                    // and uses LastGameProfiles[currentGame] instead — which on most installs maps
+                    // to "Default Profile" for any game that doesn't have an explicit mapping.
+                    //
+                    // Symptom pre-v1.6.0 (fixed for safe-activate sections): every SimHub restart
+                    // showed Default Profile despite activeProfileId pointing at F1SimHubLive.
+                    //
+                    // Symptom pre-v1.7.1 (fixed here): user with a non-default profile pre-existing
+                    // in a section (typical for the leds section after using SimHub for any racing
+                    // game) had Mode 2 left in place. When the v1.7.0 custom-game seeder added a
+                    // F1SimHubLive entry to CustomGames.json, SimHub auto-switched to that game on
+                    // MultiViewer launch, found no LastGameProfiles[Custom_<guid>] mapping, and
+                    // fell back to "Default Profile" / "Basic". User saw LEDs stuck on Basic and
+                    // had to manually re-pick F1SimHubLive every time.
                     if (EnsureSwitchingModeDisabled(sectionObj))
                     {
                         switchingModeFixed++;
-                        log?.Invoke($"Device '{displayName}' / section '{section}': set ProfileSwitchingMode=1 (Disabled) so SimHub respects activeProfileId across restarts.");
+                        log?.Invoke($"Device '{displayName}' / section '{section}': set ProfileSwitchingMode=1 (Disabled) so SimHub respects activeProfileId across game changes (including our seeded F1SimHubLive custom game).");
                     }
                 }
 

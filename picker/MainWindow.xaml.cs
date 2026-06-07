@@ -53,6 +53,7 @@ public partial class MainWindow : Window
     private int _endRpm = 14000;
     private double _lastRpm;
     private bool _suppressSliderWrite; // true while loading from settings
+    private bool _suppressAutoLaunchWrite; // true while seeding checkbox from settings
 
     private CancellationTokenSource _ctsLifetime = new();
     private string _currentDriverNumber = "";
@@ -95,6 +96,21 @@ public partial class MainWindow : Window
 
         _currentDriverNumber = SettingsFileWriter.ReadCurrentDriverNumber(_settingsPath) ?? "";
         UpdateCurrentDriverText();
+
+        // Seed the Auto-launch checkbox from the current settings.json value
+        // BEFORE the window is shown so the user never sees a flicker from
+        // the XAML default (unchecked) to the persisted state. The suppress
+        // flag stops the resulting Checked/Unchecked event from looping back
+        // and writing the value we just read.
+        _suppressAutoLaunchWrite = true;
+        try
+        {
+            AutoLaunchCheck.IsChecked = SettingsFileWriter.ReadAutoLaunchPicker(_settingsPath);
+        }
+        finally
+        {
+            _suppressAutoLaunchWrite = false;
+        }
 
         InitializeLedStrip();
         LoadSliderRangeFromSettings();
@@ -314,6 +330,28 @@ public partial class MainWindow : Window
         {
             Topmost = cb.IsChecked == true;
             WindowPreferencesStore.Save(cb);
+        }
+    }
+
+    private void AutoLaunchCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        // Suppressed during ctor when we seed the checkbox from settings.json —
+        // otherwise we'd write the value we just read.
+        if (_suppressAutoLaunchWrite) return;
+        if (sender is not CheckBox cb) return;
+        bool value = cb.IsChecked == true;
+        try
+        {
+            SettingsFileWriter.WriteAutoLaunchPicker(_settingsPath, value);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                this,
+                $"Could not save Auto-launch preference to:\n{_settingsPath}\n\n{ex.GetType().Name}: {ex.Message}",
+                "F1SimHubLive Driver Picker",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
         }
     }
 

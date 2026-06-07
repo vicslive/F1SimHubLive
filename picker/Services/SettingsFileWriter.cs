@@ -87,6 +87,41 @@ internal static class SettingsFileWriter
         });
     }
 
+    /// <summary>
+    /// Reads <c>AutoLaunchPicker</c> from the settings file. Returns false
+    /// (matching <see cref="F1SimHubLive.Settings.AutoLaunchPicker"/>'s
+    /// default) when the file is missing, malformed, or the field is unset.
+    /// </summary>
+    public static bool ReadAutoLaunchPicker(string settingsPath)
+    {
+        try
+        {
+            if (!File.Exists(settingsPath)) return false;
+            using var doc = JsonDocument.Parse(File.ReadAllText(settingsPath));
+            if (!doc.RootElement.TryGetProperty("AutoLaunchPicker", out var v)) return false;
+            return v.ValueKind switch
+            {
+                JsonValueKind.True => true,
+                JsonValueKind.False => false,
+                _ => false,
+            };
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Writes <c>AutoLaunchPicker</c> to the settings file, atomically. The
+    /// plugin reads this once during <c>Init()</c> to decide whether to spawn
+    /// the picker, so the change takes effect on the next SimHub launch.
+    /// </summary>
+    public static void WriteAutoLaunchPicker(string settingsPath, bool value)
+    {
+        WriteField(settingsPath, obj => obj["AutoLaunchPicker"] = value);
+    }
+
     private static void WriteField(string settingsPath, Action<JsonObject> mutate)
     {
         JsonNode root;

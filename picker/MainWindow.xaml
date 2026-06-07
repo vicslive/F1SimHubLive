@@ -213,6 +213,14 @@
                               ToolTip="Show shift-light range sliders"
                               Checked="LedToggle_Changed"
                               Unchecked="LedToggle_Changed" />
+                <CheckBox x:Name="AutoLaunchCheck"
+                          Content="🚀 Auto-launch" IsChecked="False"
+                          Foreground="#C8C8D0"
+                          VerticalAlignment="Center"
+                          Margin="0,0,10,0"
+                          ToolTip="When checked, this picker launches automatically every time SimHub starts."
+                          Checked="AutoLaunchCheck_Changed"
+                          Unchecked="AutoLaunchCheck_Changed" />
                 <CheckBox x:Name="TopmostCheck"
                           Content="📌 Pin" IsChecked="True"
                           Foreground="#C8C8D0"

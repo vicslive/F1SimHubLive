@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.4.1] — 2026-06-07
+
+### Added
+- **Picker has a new `🚀 Auto-launch` checkbox** in the top-right toolbar (next to `📌 Pin`) that toggles the `AutoLaunchPicker` setting on the fly. Symptom Vic caught on the Media PC after running the v1.4.0 installer: he forgot to tick the "Launch picker with SimHub" option in the install wizard, and there was no way to turn it on afterward short of editing `F1SimHubLive.Settings.json` by hand or re-running the installer. The new checkbox mirrors the existing `📌 Pin` toggle pattern: on picker startup, the checkbox is seeded from the current `AutoLaunchPicker` value in `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json`; checking or unchecking it writes the new value atomically (via the existing `SettingsFileWriter` infrastructure that already handles `DriverNumber` and `RpmShiftLight*`). The setting takes effect on the next SimHub launch — the plugin reads `AutoLaunchPicker` once during `Init()` to decide whether to spawn the picker. No need to ever re-run the installer for this preference again.
+
+### Changed
+- Picker and plugin csproj versions bumped from `1.3.9` → `1.4.1` to align with the installer. The v1.4.0 release accidentally shipped with the picker and plugin still labeled `1.3.9` internally even though both binaries had real changes (plugin gained `MultiViewerRunning`); the picker's About tooltip and the plugin DLL's FileVersion now correctly read `1.4.1`.
+
 ## [1.4.0] — 2026-06-07
 
 ### Added

@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.5.8] — 2026-06-07
+
+### Fixed
+- **Media PC: LEDs stuck on "Default" profile after every fresh install — the wheel LCD lit up correctly, but the LED bar stayed dark until Vic manually opened SimHub → LEDs → Profile dropdown and picked F1SimHubLive every time.** The root cause was a two-layer issue in the LED profile activation pipeline:
+
+  1. **Installer seeder safety check had an orphan-GUID gap.** `LedProfileSeederService.cs`'s `safeToActivate` logic was: "the current `activeProfileId` is empty OR resolves to a profile whose Name starts with `Default*`." But SimHub on some boxes (Media PC, fresh installs, boxes that have never had a custom LED profile picked) leaves `activeProfileId` pointing at a GUID for a *built-in* default profile that **isn't enumerated in the `Profiles[]` array**. The seeder's `FindById` returned null, `currentActiveName` stayed null, `safeToActivate` stayed false, and the seeder preserved Default instead of flipping to ours. On Vic's dev box, the buttons section happened to enumerate its Default Profile in `Profiles[]` (the "lucky" case), so the seeder worked — Media PC was the unlucky case.
+  2. **Runtime LED switcher (v1.5.0) only fires on MultiViewer up/down transitions** and even then SimHub doesn't hot-reload `settings.json` while running — there's no FileSystemWatcher on the per-device LED settings, so any write is invisible to SimHub until its next cold start. Combined with bug #1, this meant the v1.5.0 auto-switcher could never recover from the "stuck on Default" state on its own; the user had to either reinstall (which re-ran the buggy seeder and changed nothing) or manually pick via the UI (which DID update SimHub's in-memory state).
+
+  Fixes in v1.5.8:
+  - **Seeder safety check now treats orphan GUIDs as safe to overwrite** (in `installer/Services/LedProfileSeederService.cs`). If the current `activeProfileId` doesn't resolve to any profile in the `Profiles[]` array, we assume it's pointing at SimHub's built-in/implicit default (the user can't have consciously selected it — there's no UI entry for it) and we flip to ours. Real user picks (Forza, AC, iRacing profiles, etc., all of which DO enumerate in `Profiles[]` because the user created/imported them via the UI) are still preserved.
+  - **New `LedRuntimeSwitcher.EnsureActiveOnStartup()` runs on plugin Init** regardless of MultiViewer state. Walks every supported device's `settings.json`, applies the same safety check, and re-asserts our profile as active if the current selection is empty, `Default*`, or an orphan GUID. The write is atomic; SimHub picks it up on its next start. This closes the gap for users who install a plugin-DLL-only update without re-running the installer (the seeder doesn't run in that path).
+
+  Effect: on next install of v1.5.8, Vic's Media PC will write the correct `activeProfileId` to every device's `settings.json`, SimHub will read it on next start, and the LEDs will work immediately — no more manual UI flip after each install.
+
 ## [1.5.7] — 2026-06-07
 
 ### Changed

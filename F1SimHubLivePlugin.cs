@@ -150,6 +150,21 @@ namespace F1SimHubLive
                 if (!string.IsNullOrEmpty(simhubInstallDir))
                 {
                     _ledRuntimeSwitcher = new LedRuntimeSwitcher(simhubInstallDir!, Log);
+
+                    // v1.5.8 startup pass: re-assert F1SimHubLive as active on every
+                    // supported device whose current activeProfileId is empty, orphan,
+                    // or Default*. Fixes the Media-PC "stuck on Default after install"
+                    // bug — SimHub doesn't hot-reload device settings.json, so any
+                    // write here takes effect on the NEXT SimHub start. The user can
+                    // still pick a third-party racing profile and we'll leave it alone.
+                    try
+                    {
+                        _ledRuntimeSwitcher.EnsureActiveOnStartup();
+                    }
+                    catch (Exception ex)
+                    {
+                        Log($"LedRuntimeSwitcher startup pass failed: {ex.Message}");
+                    }
                 }
                 else
                 {

@@ -193,7 +193,12 @@ public sealed class LedProfileSeederService
                     // Safety: do NOT clobber a user's existing racing profile selection.
                     // Only flip activeProfileId to ours if the current selection is:
                     //   - null/empty (fresh install), OR
-                    //   - the SimHub built-in "Default Profile" (user has never customized)
+                    //   - the SimHub built-in "Default Profile" (user has never customized), OR
+                    //   - a GUID that doesn't resolve to anything in the Profiles array
+                    //     (orphaned reference — SimHub sometimes leaves activeProfileId
+                    //     pointing at an implicit/built-in default that doesn't enumerate;
+                    //     symptom on Media PC: every fresh install left the wheel stuck on
+                    //     "Default" until the user manually re-picked F1SimHubLive).
                     // Otherwise the user has consciously picked a profile (Forza, AC, iRacing, etc.)
                     // and our IDLE-mode F1 LEDs would overwrite their racing setup — bad.
                     // Users with their own profile can manually switch to ours via SimHub UI.
@@ -203,7 +208,14 @@ public sealed class LedProfileSeederService
                     {
                         var currentProfile = FindById(profiles, currentActive!);
                         currentActiveName = currentProfile?["Name"]?.GetValue<string>();
-                        if (currentActiveName != null && currentActiveName.StartsWith("Default", StringComparison.OrdinalIgnoreCase))
+                        if (currentProfile == null)
+                        {
+                            // GUID points to nothing the user can possibly have selected on
+                            // purpose — treat as orphan/built-in default, safe to overwrite.
+                            safeToActivate = true;
+                            log?.Invoke($"Device '{displayName}' / section '{section}': activeProfileId '{currentActive}' is not in Profiles[] (orphan or built-in Default) — treating as safe to activate.");
+                        }
+                        else if (currentActiveName != null && currentActiveName.StartsWith("Default", StringComparison.OrdinalIgnoreCase))
                         {
                             safeToActivate = true;
                         }

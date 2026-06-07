@@ -107,6 +107,134 @@ namespace F1SimHubLive
             }
         }
 
+        /// <summary>
+        /// v1.5.8 startup-time guarantee: walks every supported device's settings.json
+        /// at plugin Init and force-activates our F1SimHubLive profile whenever the
+        /// current selection is one of: empty, "Default*", orphan GUID (points to no
+        /// profile in the array), or already ours. If the user has manually picked
+        /// a real third-party profile, we leave it alone.
+        /// <para>
+        /// Why this exists: SimHub doesn't reload device settings.json while running
+        /// (no FileSystemWatcher on that path), so the v1.5.0 runtime switcher's
+        /// transition-on-MV-up write only takes effect on the *next* SimHub start.
+        /// On Vic's Media PC, every fresh install left the wheel stuck on "Default"
+        /// because the seeder's pre-v1.5.8 safety check incorrectly preserved an
+        /// orphan activeProfileId pointing at SimHub's built-in default (which lives
+        /// outside the enumerated Profiles[] array). This Init pass closes that hole
+        /// at the plugin level too, so even a runtime install (without re-running
+        /// the installer's seeder) recovers on the next SimHub start.
+        /// </para>
+        /// <para>
+        /// Same atomic write pattern as <see cref="OnMultiViewerRunningChanged(bool)"/>
+        /// — SimHub picks up the new value when it cold-reads on next start.
+        /// </para>
+        /// </summary>
+        public void EnsureActiveOnStartup()
+        {
+            try
+            {
+                if (!Directory.Exists(_devicesRoot))
+                {
+                    _log($"LedRuntimeSwitcher: devices root not found at {_devicesRoot} — startup pass skipped.");
+                    return;
+                }
+
+                foreach (var dir in Directory.EnumerateDirectories(_devicesRoot))
+                {
+                    var settingsFile = Path.Combine(dir, "settings.json");
+                    if (!File.Exists(settingsFile)) continue;
+
+                    try
+                    {
+                        EnsureActiveForDevice(settingsFile);
+                    }
+                    catch (Exception ex)
+                    {
+                        _log($"LedRuntimeSwitcher (startup): device '{Path.GetFileName(dir)}' failed: {ex.Message}");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _log($"LedRuntimeSwitcher (startup): unexpected error: {ex.Message}");
+            }
+        }
+
+        private void EnsureActiveForDevice(string settingsFile)
+        {
+            var raw = File.ReadAllText(settingsFile);
+            var root = JObject.Parse(raw);
+
+            var deviceTypeId = root.Value<string>("DeviceTypeID");
+            if (!string.Equals(deviceTypeId, GsiFpeV2DeviceTypeId, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var instanceId = root.Value<string>("InstanceId") ?? Path.GetFileName(Path.GetDirectoryName(settingsFile)) ?? "(unknown)";
+            var ledsRoot = root["Settings"]?["LEDS"] as JObject;
+            if (ledsRoot == null) return;
+
+            bool changed = false;
+            foreach (var (section, profileName) in Sections)
+            {
+                if (ledsRoot[section] is not JObject sectionObj) continue;
+                if (sectionObj["Profiles"] is not JArray profiles) continue;
+
+                var ourProfile = FindByName(profiles, profileName);
+                if (ourProfile == null)
+                {
+                    // Installer hasn't seeded this section yet — nothing to switch to.
+                    continue;
+                }
+
+                var ourProfileId = ourProfile.Value<string>("ProfileId");
+                if (string.IsNullOrEmpty(ourProfileId)) continue;
+
+                var currentActive = sectionObj.Value<string>("activeProfileId");
+
+                // Already ours — no-op (and DON'T touch the file, so we don't trigger
+                // a spurious SimHub-side reload on next start).
+                if (string.Equals(currentActive, ourProfileId, StringComparison.OrdinalIgnoreCase)) continue;
+
+                // Apply same safety check as the installer seeder: empty, orphan, or
+                // Default* → safe to overwrite. Real user-chosen profile → leave alone.
+                bool safeToActivate = string.IsNullOrEmpty(currentActive);
+                string? currentActiveName = null;
+                if (!safeToActivate)
+                {
+                    var currentProfile = FindById(profiles, currentActive!);
+                    if (currentProfile == null)
+                    {
+                        safeToActivate = true; // orphan GUID — overwrite is safe
+                    }
+                    else
+                    {
+                        currentActiveName = currentProfile.Value<string>("Name");
+                        if (currentActiveName != null && currentActiveName.StartsWith("Default", StringComparison.OrdinalIgnoreCase))
+                        {
+                            safeToActivate = true;
+                        }
+                    }
+                }
+
+                if (!safeToActivate)
+                {
+                    _log($"LedRuntimeSwitcher (startup): device '{instanceId}' / section '{section}': preserving user's '{currentActiveName ?? currentActive}'.");
+                    continue;
+                }
+
+                sectionObj["activeProfileId"] = ourProfileId;
+                changed = true;
+                _log($"LedRuntimeSwitcher (startup): device '{instanceId}' / section '{section}': activated F1SimHubLive (was '{currentActiveName ?? currentActive ?? "(unset)"}'). Takes effect on next SimHub start.");
+            }
+
+            if (changed)
+            {
+                WriteAtomic(settingsFile, root);
+            }
+        }
+
         private void ProcessDevice(string settingsFile, bool running)
         {
             var raw = File.ReadAllText(settingsFile);
@@ -198,6 +326,18 @@ namespace F1SimHubLive
             foreach (var p in profiles)
             {
                 if (p is JObject obj && string.Equals(obj.Value<string>("Name"), profileName, StringComparison.Ordinal))
+                {
+                    return obj;
+                }
+            }
+            return null;
+        }
+
+        private static JObject? FindById(JArray profiles, string profileId)
+        {
+            foreach (var p in profiles)
+            {
+                if (p is JObject obj && string.Equals(obj.Value<string>("ProfileId"), profileId, StringComparison.OrdinalIgnoreCase))
                 {
                     return obj;
                 }

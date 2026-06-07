@@ -18,6 +18,7 @@ public sealed class LedProfileSeedChange
     public int ProfilesInserted { get; init; }        // number of {leds,buttons,raw} profiles freshly added
     public int ProfilesAlreadyPresent { get; init; }  // number already there by Name (idempotent skip)
     public int SectionsActivated { get; init; }       // sections where we flipped activeProfileId to ours
+    public int SectionsSwitchingModeFixed { get; init; } // sections where we forced ProfileSwitchingMode=1 (Disabled)
     public bool Modified { get; init; }
     public string? BackupFile { get; init; }
     public string? Error { get; init; }
@@ -156,7 +157,7 @@ public sealed class LedProfileSeederService
                     continue;
                 }
 
-                int inserted = 0, already = 0, activated = 0;
+                int inserted = 0, already = 0, activated = 0, switchingModeFixed = 0;
                 foreach (var (section, assetName, profileName) in Seeds)
                 {
                     if (ledsRoot[section] is not JsonObject sectionObj)
@@ -223,7 +224,7 @@ public sealed class LedProfileSeederService
 
                     if (string.Equals(currentActive, targetProfileId, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Already active — no-op
+                        // Already active — but still enforce ProfileSwitchingMode=1 below.
                     }
                     else if (safeToActivate)
                     {
@@ -234,12 +235,29 @@ public sealed class LedProfileSeederService
                     else
                     {
                         log?.Invoke($"Device '{displayName}' / section '{section}': existing active profile '{currentActiveName ?? currentActive}' preserved. F1SimHubLive profile installed but not auto-activated. To use it, open SimHub > Devices > LEDs > '{section}' and select '{profileName}'.");
+                        // User has their own racing profile selected — don't touch their
+                        // ProfileSwitchingMode either. Their per-game switching is intentional.
+                        continue;
+                    }
+
+                    // v1.6.0: When OUR profile is the active one in this section, force
+                    // ProfileSwitchingMode = 1 ("Disabled" in the SimHub UI's "Automatic
+                    // profile switching" radio group). In Mode 2 ("Last selected profile,
+                    // per game") SimHub IGNORES activeProfileId and uses LastGameProfiles
+                    // [currentGame] instead — which on most installs maps to "Default Profile".
+                    // Symptom on Vic's Media PC pre-v1.6.0: every SimHub restart showed
+                    // Default Profile in the dropdown despite activeProfileId pointing
+                    // at F1SimHubLive. Dev box was fine because it was already on Mode 1.
+                    if (EnsureSwitchingModeDisabled(sectionObj))
+                    {
+                        switchingModeFixed++;
+                        log?.Invoke($"Device '{displayName}' / section '{section}': set ProfileSwitchingMode=1 (Disabled) so SimHub respects activeProfileId across restarts.");
                     }
                 }
 
-                if (inserted == 0 && activated == 0)
+                if (inserted == 0 && activated == 0 && switchingModeFixed == 0)
                 {
-                    log?.Invoke($"Device '{displayName}': all F1 Live profiles already present and active - no change.");
+                    log?.Invoke($"Device '{displayName}': all F1 Live profiles already present, active, and ProfileSwitchingMode=Disabled - no change.");
                     changes.Add(new LedProfileSeedChange
                     {
                         InstanceId = instanceId,
@@ -249,6 +267,7 @@ public sealed class LedProfileSeederService
                         ProfilesInserted = 0,
                         ProfilesAlreadyPresent = already,
                         SectionsActivated = 0,
+                        SectionsSwitchingModeFixed = 0,
                         Modified = false,
                     });
                     continue;
@@ -275,7 +294,7 @@ public sealed class LedProfileSeederService
                 TryEnsureUsersCanWrite(settingsPath, log);
 
                 log?.Invoke(
-                    $"Device '{displayName}': LED profile seed complete - inserted={inserted}, already-present={already}, activated={activated}.");
+                    $"Device '{displayName}': LED profile seed complete - inserted={inserted}, already-present={already}, activated={activated}, switching-mode-fixed={switchingModeFixed}.");
 
                 changes.Add(new LedProfileSeedChange
                 {
@@ -286,6 +305,7 @@ public sealed class LedProfileSeederService
                     ProfilesInserted = inserted,
                     ProfilesAlreadyPresent = already,
                     SectionsActivated = activated,
+                    SectionsSwitchingModeFixed = switchingModeFixed,
                     Modified = true,
                     BackupFile = backup,
                 });
@@ -362,6 +382,46 @@ public sealed class LedProfileSeederService
         {
             log?.Invoke($"WARN: could not ensure Users:Modify on '{filePath}': {ex.Message}. SimHub may fail to persist LED profile picks on close.");
         }
+    }
+
+    /// <summary>
+    /// v1.6.0: Force a section's <c>ProfileSwitchingMode</c> to <c>1</c> ("Disabled"
+    /// in the SimHub UI's "Automatic profile switching" radio group). Returns
+    /// <c>true</c> if a change was made.
+    ///
+    /// Mode 1 = Disabled (SimHub respects <c>activeProfileId</c> as the single static pick).
+    /// Mode 2 = "Last selected profile, per game" (uses <c>LastGameProfiles[currentGame]</c>;
+    ///          IGNORES activeProfileId — this caused Vic's Media PC bug where every
+    ///          SimHub restart fell back to "Default Profile" despite our seeder
+    ///          correctly writing F1SimHubLive's GUID to activeProfileId).
+    /// Mode 3 = Automatic (best-matching, rule-driven).
+    ///
+    /// We only force this when we're activating our own profile in the section.
+    /// If the user has their own racing profile selected, the seeder skips activation
+    /// (safety check) and also skips this mode change — their per-game switching
+    /// preference is preserved.
+    /// </summary>
+    private static bool EnsureSwitchingModeDisabled(JsonObject sectionObj)
+    {
+        var node = sectionObj["ProfileSwitchingMode"];
+        int? current = null;
+        if (node != null)
+        {
+            try { current = node.GetValue<int>(); }
+            catch
+            {
+                try
+                {
+                    var s = node.GetValue<string>();
+                    if (int.TryParse(s, out var v)) current = v;
+                }
+                catch { /* unknown shape — fall through and overwrite */ }
+            }
+        }
+
+        if (current == 1) return false;
+        sectionObj["ProfileSwitchingMode"] = 1;
+        return true;
     }
 
     private static JsonObject? FindByName(JsonArray profiles, string name)

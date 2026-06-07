@@ -193,9 +193,20 @@ namespace F1SimHubLive
 
                 var currentActive = sectionObj.Value<string>("activeProfileId");
 
-                // Already ours — no-op (and DON'T touch the file, so we don't trigger
-                // a spurious SimHub-side reload on next start).
-                if (string.Equals(currentActive, ourProfileId, StringComparison.OrdinalIgnoreCase)) continue;
+                // Already ours — but still verify ProfileSwitchingMode is Disabled (1).
+                // In Mode 2 ("Last selected, per game") SimHub IGNORES activeProfileId and
+                // uses LastGameProfiles[currentGame] instead, which on most installs maps
+                // to "Default Profile". Vic's Media PC pre-v1.6.0: file said F1SimHubLive
+                // active, but dropdown showed Default Profile after every restart.
+                if (string.Equals(currentActive, ourProfileId, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (EnsureSwitchingModeDisabled(sectionObj))
+                    {
+                        changed = true;
+                        _log($"LedRuntimeSwitcher (startup): device '{instanceId}' / section '{section}': set ProfileSwitchingMode=1 (Disabled) so SimHub respects activeProfileId. Takes effect on next SimHub start.");
+                    }
+                    continue;
+                }
 
                 // Apply same safety check as the installer seeder: empty, orphan, or
                 // Default* → safe to overwrite. Real user-chosen profile → leave alone.
@@ -225,6 +236,7 @@ namespace F1SimHubLive
                 }
 
                 sectionObj["activeProfileId"] = ourProfileId;
+                EnsureSwitchingModeDisabled(sectionObj);  // v1.6.0: also force Mode=1 so SimHub respects our write
                 changed = true;
                 _log($"LedRuntimeSwitcher (startup): device '{instanceId}' / section '{section}': activated F1SimHubLive (was '{currentActiveName ?? currentActive ?? "(unset)"}'). Takes effect on next SimHub start.");
             }
@@ -343,6 +355,26 @@ namespace F1SimHubLive
                 }
             }
             return null;
+        }
+
+        /// <summary>
+        /// v1.6.0: Force a section's <c>ProfileSwitchingMode</c> to <c>1</c> ("Disabled"
+        /// in the SimHub UI's "Automatic profile switching" radio group). Returns
+        /// <c>true</c> if a change was made.
+        ///
+        /// Mode 1 = Disabled — SimHub respects <c>activeProfileId</c> as the static pick.
+        /// Mode 2 = "Last selected profile, per game" — SimHub IGNORES activeProfileId
+        ///          and uses <c>LastGameProfiles[currentGame]</c>. This was Vic's Media
+        ///          PC bug: the file said F1SimHubLive was active, but on every restart
+        ///          SimHub fell back to "Default Profile" because xplane12 mapped to it.
+        /// Mode 3 = Automatic (best-matching, rule-driven).
+        /// </summary>
+        private static bool EnsureSwitchingModeDisabled(JObject sectionObj)
+        {
+            var current = sectionObj.Value<int?>("ProfileSwitchingMode");
+            if (current == 1) return false;
+            sectionObj["ProfileSwitchingMode"] = 1;
+            return true;
         }
 
         /// <summary>

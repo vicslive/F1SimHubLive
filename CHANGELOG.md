@@ -6,6 +6,24 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-06-07
+
+### Fixed
+- **Media PC: LED profile picks STILL weren't persisting across SimHub restarts (THE actual root cause).** v1.5.9's defensive ACL grant was applied but the symptom remained: every SimHub restart on Media PC reverted the LED profile dropdown to "Default Profile" despite `activeProfileId` in `settings.json` correctly pointing at F1SimHubLive's GUID. ACLs turned out to be a red herring — `BUILTIN\Users` already had `FullControl` on Vic's Media PC settings.json (inherited), and `LastWriteTime` proved SimHub WAS persisting writes successfully. The file's `activeProfileId` matched our profile after every session. Yet SimHub's UI dropdown kept showing "Default Profile" on next open.
+
+  Real root cause (found by diffing Media PC vs Dev box settings.json field-by-field): the `ProfileSwitchingMode` integer field on the device's LEDS section controls SimHub's "Automatic profile switching" UI radio group, with three values:
+    - `1` = **Disabled** — SimHub respects `activeProfileId` as the static pick. (Dev box config.)
+    - `2` = **Last selected profile, per game** — SimHub IGNORES `activeProfileId` and uses `LastGameProfiles[<CurrentProfileGame>]` instead. (Media PC config.)
+    - `3` = **Automatic** — Best-matching, rule-driven.
+
+  Media PC was in Mode 2 with `CurrentProfileGame = XPlane12`, and `LastGameProfiles[xplane12]` for the buttons section pointed at SimHub's built-in `Default Profile`. So on every restart SimHub correctly read the file but used the per-game-profile lookup path, which had no F1SimHubLive entry for XPlane12, falling back to Default Profile. Every previous fix (orphan-GUID safety in v1.5.8, EnsureActiveOnStartup in v1.5.8, ACL grant in v1.5.9) was writing to the wrong field — `activeProfileId` doesn't matter in Mode 2.
+
+  Fix in v1.6.0: both the installer's `LedProfileSeederService` and the runtime `LedRuntimeSwitcher.EnsureActiveOnStartup` now force `ProfileSwitchingMode = 1` (Disabled) on each section where they activate our profile. New helper `EnsureSwitchingModeDisabled(sectionObj)` in both files (System.Text.Json variant in seeder, Newtonsoft variant in switcher). New counter `SectionsSwitchingModeFixed` on `LedProfileSeedChange` for install-time logging.
+
+  Safety: the mode is forced ONLY when we activate our own profile in a section. If the user has their own racing profile selected (Forza, AC, iRacing, etc.) the seeder's safety check skips activation AND the mode change — their per-game switching preference is preserved untouched.
+
+  Effect on Vic's Media PC: install v1.6.0, then SimHub's LED dropdown will show F1SimHubLive on every open (no manual re-pick required). The LED bar will activate as soon as MultiViewer is detected, and persist correctly across all subsequent SimHub sessions. Combined with v1.5.8 (orphan-GUID safety + EnsureActiveOnStartup) and v1.5.9 (ACL belt-and-suspenders), this completes the Media PC LED reliability story.
+
 ## [1.5.9] — 2026-06-07
 
 ### Fixed

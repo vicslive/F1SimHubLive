@@ -6,6 +6,29 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.5.4] — 2026-06-07
+
+### Fixed
+- **Picker LED preview bar stayed dim on Vic's Media PC even though the wheel was lighting up correctly.** Same machine, same MultiViewer instance, same `/api/v1/live-timing/CarData` endpoint — yet the plugin (running inside SimHub) parsed CarData and drove the wheel, while the picker silently received nothing. Symptom matrix: wheel responsive ✓, every driver in the picker leaderboard showing 0 km/h ✗, picker RPM readout never updating ✗, no error message anywhere ✗.
+
+  Root cause: parser asymmetry between the two processes. The plugin (`F1SimHubLive.dll`, targets .NET Framework 4.8) uses **Newtonsoft.Json** (`JObject.Parse`), which tolerates trailing commas, comments, duplicate keys, and other minor JSON schema drift. The picker (`F1SimHubLive-Picker.exe`, targets .NET 8) was using **System.Text.Json** (`JsonDocument.Parse`) with its default strict options, and was swallowing whichever schema-drift exception MV's Media-PC payload triggered (the parser threw, the `catch` block silently returned false, the loop kept polling forever with nothing to show). Vic's dev machine (SupermanOne) parses the same endpoint fine, so the bug never surfaced before this Media-PC install.
+
+  Fix: picker's `PickerTelemetryClient.TryParseLatest` is rewritten to use `Newtonsoft.Json` (`JObject`/`JArray`) mirroring the plugin's `CarDataDecoder`. The picker's `.csproj` now references `Newtonsoft.Json 13.0.3` (same version as the plugin). If the plugin can parse a CarData response, the picker can now parse it too — by construction.
+
+### Added
+- **Telemetry health is now visible in the picker UI.** Previously when CarData wasn't flowing, the LED preview bar simply stayed dim and there was no indication of why. v1.5.4 surfaces three new states next to the LED strip via the RPM readout text:
+  - `—` (gray) — never received a frame yet; waiting for first CarData poll
+  - `no MV` (orange) — HTTP failures: MultiViewer process not running, port wrong, firewall blocking
+  - `ERR` (red) — HTTP succeeded but the CarData payload failed to parse. Tooltip points to the diagnostic log file location.
+  - `stale` (orange) — was previously receiving data but no fresh frame in the last 5 seconds. Also forces the LED strip to dim so the user doesn't trust a frozen shift-light pattern.
+
+  Healthy state stays unchanged: the integer RPM with the existing tooltip "Live RPM (MultiViewer telemetry)".
+
+- **First-failure raw-response dump for diagnostics.** When the picker's CarData parser throws, v1.5.4 dumps the raw HTTP response (plus a header noting the driver number, base URL, and exception type) to `%APPDATA%\F1SimHubLive\Diagnostics\picker-cardata-failed-<timestamp>.json`. Only the *first* failure per process lifetime is logged — subsequent failures are skipped to avoid filling the disk with identical payloads. Hover over the `ERR` readout to see the dump folder path. This file is what a future bug report can attach to identify the next schema drift.
+
+### Why this was missed before
+The picker's parser worked perfectly on Vic's dev machine (SupermanOne) because that machine's MultiViewer was producing strict JSON that both STJ and NJSON accepted. The Media PC happened to surface a payload variation that NJSON tolerates but STJ rejects — likely a trailing comma or a number-as-string somewhere in `Cars["44"]["Channels"]`. Without a raw-response dump anywhere in the picker, the only diagnostic was "LED bar dim, no message" — which made it look like an MV issue rather than a parser issue. v1.5.4 adds both the structural fix (NJSON parity with plugin) AND the diagnostic surface (visible status + on-disk dump) so any future asymmetry is detectable on first observation rather than reverse-engineered after multiple iterations.
+
 ## [1.5.3] — 2026-06-07
 
 ### Fixed

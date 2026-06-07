@@ -44,11 +44,19 @@ public partial class MainWindow : Window
     private readonly PickerTelemetryClient _telemetry;
     private readonly ObservableCollection<Brush> _ledBrushes = new();
     private readonly DispatcherTimer _sliderWriteTimer;
+    private DispatcherTimer? _telemetryWatchdog;
     private static readonly Brush DimLedBrush = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x20));
     private static readonly Brush GreenLedBrush = new SolidColorBrush(Color.FromRgb(0x3F, 0xD0, 0x6A));
     private static readonly Brush BlueLedBrush = new SolidColorBrush(Color.FromRgb(0x3C, 0x9C, 0xF0));
     private static readonly Brush RedLedBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0x3A, 0x3A));
     private static readonly Brush WhiteLedBrush = new SolidColorBrush(Color.FromRgb(0xF5, 0xF5, 0xFA));
+    // v1.5.4: RpmReadout color states. Healthy = data flowing,
+    // Warn = MV not reachable, Error = HTTP OK but parse failed.
+    private static readonly Brush HealthyRpmBrush = new SolidColorBrush(Color.FromRgb(0xC8, 0xC8, 0xD4));
+    private static readonly Brush WarnRpmBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0xB0, 0x40));
+    private static readonly Brush ErrorRpmBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0x3A, 0x3A));
+    private static readonly Brush IdleRpmBrush = new SolidColorBrush(Color.FromRgb(0x98, 0x98, 0xA4));
+    private static readonly TimeSpan TelemetryStaleThreshold = TimeSpan.FromSeconds(5);
     private int _startRpm = 3500;
     private int _endRpm = 13000;
     private double _lastRpm;
@@ -139,13 +147,42 @@ public partial class MainWindow : Window
             _lastRpm = rpm;
             ApplyLedsForRpm(rpm);
             RpmReadout.Text = ((int)Math.Round(rpm)).ToString();
+            RpmReadout.Foreground = HealthyRpmBrush;
+            RpmReadout.ToolTip = "Live RPM (MultiViewer CarData)";
         }));
         _telemetry.OnStatus += s => Dispatcher.BeginInvoke(new Action(() =>
         {
             // Telemetry status is informational; the live-timing client owns
-            // StatusText. Surface "telemetry disconnected" later if needed;
-            // for now the LED strip going dim is its own signal.
-            _ = s;
+            // StatusText. Surface MV disconnects via the readout so the
+            // user sees "why are the LEDs dim" right next to the LED strip.
+            if (s.StartsWith("Waiting", StringComparison.OrdinalIgnoreCase) ||
+                s.StartsWith("Telemetry disconnected", StringComparison.OrdinalIgnoreCase))
+            {
+                RpmReadout.Text = "no MV";
+                RpmReadout.Foreground = WarnRpmBrush;
+                RpmReadout.ToolTip = s + "\n\nThe LED preview strip stays dim until MultiViewer is reachable.";
+            }
+        }));
+        // v1.5.4: parse errors are LOUD now. If MV is reachable but the
+        // CarData payload doesn't parse, the user sees it instead of
+        // staring at a dim LED bar wondering what's broken.
+        _telemetry.OnParseError += (msg, snippet) => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            string dumpDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "F1SimHubLive",
+                "Diagnostics");
+            RpmReadout.Text = "ERR";
+            RpmReadout.Foreground = ErrorRpmBrush;
+            RpmReadout.ToolTip =
+                "MultiViewer CarData response failed to parse.\n\n" +
+                "Picker parser error:\n" + msg + "\n\n" +
+                "Raw response dumped to:\n" + dumpDir + "\n" +
+                "(file name starts with 'picker-cardata-failed-').\n\n" +
+                "Plugin/wheel keep working — the plugin uses a different parser.\n" +
+                "Ship the dump file to vics@microsoft.com so the next picker " +
+                "release can handle this MV response shape.";
+            _ = snippet;
         }));
         // Per-driver speed batch (km/h) — pushed into the matching
         // DriverTimingRow so each row can render the current car speed.
@@ -163,6 +200,17 @@ public partial class MainWindow : Window
         if (!string.IsNullOrEmpty(_currentDriverNumber))
             _telemetry.SetDriverNumber(_currentDriverNumber);
         _telemetry.Start(pollIntervalMs: 200);
+
+        // v1.5.4: watchdog. If no CarData frame has advanced the readout in
+        // the last TelemetryStaleThreshold, mark the readout stale. This
+        // catches the case where MV is up, HTTP succeeds, JSON parses, but
+        // the freshest entry has no Cars or no driver match — i.e. MV is
+        // serving an empty payload. Without this the user sees stale RPM
+        // numbers next to a frozen LED bar with no signal that telemetry
+        // has stopped flowing.
+        _telemetryWatchdog = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _telemetryWatchdog.Tick += TelemetryWatchdog_Tick;
+        _telemetryWatchdog.Start();
 
         _sliderWriteTimer = new DispatcherTimer { Interval = SliderWriteDelay };
         _sliderWriteTimer.Tick += SliderWriteTimer_Tick;
@@ -530,6 +578,43 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             StatusText.Text = $"Failed to save shift-light range: {ex.Message}";
+        }
+    }
+
+    /// <summary>
+    /// v1.5.4: ticks every 2 seconds to check whether CarData has flowed
+    /// recently. Three states:
+    ///  - never connected → "—" (idle gray)
+    ///  - was connected but no fresh frame in TelemetryStaleThreshold → "stale" (warn orange)
+    ///  - parse error already surfaced via OnParseError → leave the ERR text alone
+    /// </summary>
+    private void TelemetryWatchdog_Tick(object? sender, EventArgs e)
+    {
+        // If a parse error is currently showing, don't overwrite it — it
+        // carries more diagnostic value than any staleness message.
+        if (_telemetry.LastParseErrorMessage != null) return;
+
+        DateTime lastOk = _telemetry.LastSuccessfulParseUtc;
+        if (lastOk == DateTime.MinValue)
+        {
+            // Never received a frame. RpmReadout stays at its XAML default
+            // "—" with the idle brush — the OnStatus handler will replace
+            // it with "no MV" if HTTP fails 3x in a row.
+            return;
+        }
+
+        TimeSpan age = DateTime.UtcNow - lastOk;
+        if (age > TelemetryStaleThreshold)
+        {
+            RpmReadout.Text = "stale";
+            RpmReadout.Foreground = WarnRpmBrush;
+            RpmReadout.ToolTip =
+                $"No fresh MultiViewer CarData frame for {(int)age.TotalSeconds}s.\n\n" +
+                "MultiViewer may be paused, between sessions, or not broadcasting " +
+                "telemetry for this replay.";
+            // Also dim the LED strip so the user doesn't trust a frozen
+            // shift-light pattern.
+            for (int i = 0; i < _ledBrushes.Count; i++) _ledBrushes[i] = DimLedBrush;
         }
     }
 

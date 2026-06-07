@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading;
@@ -87,7 +88,23 @@ internal sealed class PickerTelemetryClient : IDisposable
     public PickerTelemetryClient(string baseUrl)
     {
         _baseUrl = baseUrl.TrimEnd('/');
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+        // v1.5.5: 5s timeout (was 2s) + automatic gzip/deflate decompression.
+        // CarData is the largest MV endpoint — a full-grid telemetry frame
+        // can be 30-80 KB and on a weaker box (e.g. Vic's Media PC) the
+        // 2s budget was tripping on body download + JSON parse, leaving
+        // the LED bar dim and every driver at 0 km/h while the plugin
+        // (3s timeout, running in SimHub) kept the wheel lit. Bumping
+        // matches LiveTimingClient (3s) with extra headroom and matches
+        // what HttpClient does for the wheel's plugin-side polling.
+        var handler = new HttpClientHandler
+        {
+            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate
+        };
+        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) };
+        _http.DefaultRequestHeaders.AcceptEncoding.ParseAdd("gzip, deflate");
+        // Identify ourselves so MV's logs are diagnosable if Vic ever
+        // needs to compare wheel-side vs picker-side request streams.
+        _http.DefaultRequestHeaders.UserAgent.ParseAdd("F1SimHubLive-Picker/1.5.5");
     }
 
     public void SetDriverNumber(string driverNumber)
@@ -185,13 +202,18 @@ internal sealed class PickerTelemetryClient : IDisposable
             catch (Exception ex)
             {
                 consecutiveFailures++;
-                // Stay quiet until 3 in a row — MultiViewer's CarData is
-                // briefly absent at session boundaries and that's normal.
-                if (consecutiveFailures == 3)
+                // v1.5.5: surface the problem immediately if we've never
+                // connected. Before this, the user waited ~15s (3 fails
+                // × 5s timeout) for "Waiting for MultiViewer telemetry"
+                // to appear — long enough to think the picker was just
+                // broken with no signal. After first connect, keep the
+                // 3-fail buffer because brief CarData drops at session
+                // boundaries are normal.
+                if (consecutiveFailures == 3 || (!everConnected && consecutiveFailures == 1))
                 {
                     OnStatus?.Invoke(everConnected
                         ? "Telemetry disconnected: " + ex.GetType().Name
-                        : "Waiting for MultiViewer telemetry");
+                        : "Waiting for MultiViewer telemetry (" + ex.GetType().Name + ")");
                 }
             }
 

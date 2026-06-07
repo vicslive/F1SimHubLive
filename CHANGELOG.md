@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.5.5] — 2026-06-07
+
+### Fixed
+- **Picker LED preview bar still dim and every driver stuck at 0 km/h on Media PC even with v1.5.4's Newtonsoft parity fix.** Real root cause was simpler than parser asymmetry: the picker's `PickerTelemetryClient` had a **2-second HTTP timeout** while the plugin (which works on the same machine driving the wheel) and the picker's own `LiveTimingClient` (which also works) both use **3 seconds**. The MV CarData endpoint is the largest payload in the API — a full-grid telemetry frame for ~20 drivers with multiple historical entries is typically 30-80 KB. On Vic's Media PC the body transfer + JSON deserialization consistently exceeded 2s, causing every CarData poll to throw `TaskCanceledException`, which the picker's outer catch counted as a consecutive failure and the loop kept retrying forever with nothing to show.
+
+  Fixes in v1.5.5:
+  - **Timeout bumped 2s → 5s** in `PickerTelemetryClient`. This is more headroom than the plugin (3s) because the Media PC is the worst-case box; if the wheel survives, the picker will too.
+  - **Automatic GZip + Deflate decompression** enabled on the picker's HttpClient. MV serves CarData uncompressed by default but supports gzip when `Accept-Encoding: gzip, deflate` is sent — this cuts the over-the-wire payload roughly 5×. The `Accept-Encoding` header is now set explicitly.
+  - **User-Agent identifier added** (`F1SimHubLive-Picker/1.5.5`) so future MV-side log diffs can distinguish picker requests from plugin requests at a glance.
+
+- **"Waiting for MultiViewer telemetry" appears on the very first failed poll when the picker has never connected**, instead of waiting for 3 consecutive failures (which was ~15s with the old 2s timeout). After first successful connect, the 3-failure buffer is restored so brief CarData drops at session boundaries don't flap the status.
+
+### Why v1.5.4's Newtonsoft fix wasn't enough
+v1.5.4 was a real fix for a real bug (System.Text.Json strictness vs MV schema drift) but it wasn't *Vic's* bug on Vic's Media PC. The picker on Media PC never reached the parser at all — every HTTP call was timing out before the body was fully received. v1.5.5 keeps v1.5.4's Newtonsoft parity (so any future schema-drift case is handled) AND adds the actual fix (timeout headroom) for the Media PC scenario. If the symptom persists after v1.5.5, the picker will now show **"Waiting for MultiViewer telemetry (ExceptionType)"** in the RPM readout within ~5 seconds instead of staring blank — making the next round of diagnosis fast.
+
 ## [1.5.4] — 2026-06-07
 
 ### Fixed

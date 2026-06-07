@@ -6,6 +6,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.4.0] — 2026-06-07
+
+### Added
+- **Installer now seeds three `F1SimHubLive` LED profiles** into every SimHub GSI Formula Pro Elite V2 device on the target machine, fixing a long-standing fresh-install bug where the wheel LEDs only ever showed "Default Profile" because our installer wired up the LCD dashboard but left the LED side untouched.
+
+  Symptom Vic caught on a fresh Media PC install today: after running the v1.3.9 installer on a clean machine (SimHub installed from scratch, GSI FPE V2 paired, F1RaceSim_GSIFPEV2 dashboard manually selected on LCD), opening *SimHub > Devices > GSI Formula Pro Elite V2 > LEDs* shows only `Default Profile` in every section (Buttons lighting / Telemetry Leds / Individual leds). SimHub's Default Profile is gated on `GameRunning = 1`, and F1SimHubLive deliberately runs with no game launched (telemetry flows in via the plugin from F1 MultiViewer's local API or F1 live-timing's SignalR feed), so the wheel stays dark forever. No amount of dashboard reselection fixes it — the LED profiles are stored in a *completely separate* section of the device's `settings.json` (`Settings.LEDS.{leds,buttons,raw}.Profiles`) that our installer never touched.
+
+  Root cause: three working profiles only existed on Vic's dev box because he hand-built them in SimHub's profile editor over multiple sessions (the earliest `LastLoaded` timestamp on the captured profiles is 2024-02-12). The original trick — `if([DataCorePlugin.GameRunning] = 0, 1, 0)` inside each profile's `LedContainers[N].TriggerFormula.Expression` — flipped the firing condition so the LEDs animated in IDLE mode instead of in-game. None of this state lives in the dashboard `.djson` or the plugin DLL — it's all per-device wheel-config JSON.
+
+  Fix is a new `installer/Services/LedProfileSeederService.cs` that enumerates every device under `PluginsData\Common\Devices\<guid>\settings.json`, matches `DeviceTypeID == EFC17674-559A-44DB-8D24-C6CFD203384D` (GSI FPE V2's stable type ID — same on every install), and for each of the three sections:
+  1. Backs up `settings.json` to `settings.json.preLedProfileSeed-<stamp>` before any mutation.
+  2. Loads the corresponding embedded `F1SimHubLive` profile from a new `Assets/LedProfiles/` folder.
+  3. Skips insertion if a profile with the same `Name` is already present (idempotent — safe to re-run on dev box or on upgrade).
+  4. Otherwise mints a fresh `Guid.NewGuid()` for `ProfileId` so the dev-box GUID never leaks to multiple machines.
+  5. Flips `activeProfileId` to ours **only** if the current selection is empty or points to SimHub's built-in `Default Profile`. If the user has selected their own racing profile (Forza, iRacing, AC, etc.), it is left untouched — the user picks `F1SimHubLive` manually from the SimHub UI when they want it. This prevents the installer from overwriting an existing gaming setup.
+
+  Three profiles seeded:
+  - `leds`    → `F1SimHubLive - Telemetry` — RPM shift-light bar (1 LedContainer)
+  - `buttons` → `F1SimHubLive` — static button colors (0 LedContainers — inherits brightness only)
+  - `raw`     → `F1SimHubLive - Prime Gradient` — individual-LED gradient (4 LedContainers)
+
+  Wired into `Deployer.cs` immediately after `LedConfigRewireService` (the plugin-name rewire), before the idle-dashboard write. Adds ~1.4 MB to the installer (telemetry profile alone is ~1.1 MB of LED-segment definitions); installer total stays under 100 MB.
+
+  Unsupported wheels (anything other than GSI FPE V2) are skipped with a log line. Adding Hyper P1 or other GSI wheels requires capturing the equivalent profile shape from a known-working install of that wheel; the seeder architecture supports it via the `Seeds` table — only the asset files need to be added.
+
+- **New plugin property `F1SimHubLive.MultiViewerRunning`** (bool). Polls the live Windows process table every 5 seconds for any `MultiViewer*` or `F1MV*` process. Surfaces the result as a SimHub property that LED profile TriggerFormulas can gate on. Used by the three seeded LED profiles as their firing condition:
+  ```
+  if([F1SimHubLive.MultiViewerRunning] = 1, 1, 0)
+  ```
+  Replaces the older `GameRunning = 0` gate (which was too permissive — fired any time SimHub had no game running, including pure idle staring at the wheel). The new gate is precise: LEDs only fire when MultiViewer is up on the same machine, which is the exact signal for "user is in F1-viewing mode." When MultiViewer is closed (gaming, idle, or anything else), the trigger evaluates false and our profile goes dark, leaving the wheel free for other SimHub profiles. Per Vic 2026-06-07: "nobody runs F1 MultiViewer at the same time they're actually gaming" — so MV-running is a clean binary signal. Logs the transition each direction (MV detected / MV no longer running) so the SimHub log shows the on/off events.
+
+### Changed
+- LED profile names rebranded from `F1 Live` to `F1SimHubLive`:
+  - `F1 Live- Telemetry for F1 Race viewing` → `F1SimHubLive - Telemetry`
+  - `F1 Live` → `F1SimHubLive`
+  - `F1 Live - Prime Gradient` → `F1SimHubLive - Prime Gradient`
+
+  Why: (1) clearer attribution in SimHub UI — users see our brand, not a generic "F1 Live", (2) Vic's dev box has the old `F1 Live` names, so the new names avoid an idempotent skip-path on his dev box during fresh-EXE testing, (3) future-proofs against name collision with any community profile that ships a "F1 Live" named profile.
+
+- All `LedContainers[N].TriggerFormula.Expression` references to `[DataCorePlugin.GameRunning]` rewritten to `[F1SimHubLive.MultiViewerRunning]` (see "Added" above for context).
+
+- Scrubbed three leftover `"GameCode": "IRacing"` strings inside the Telemetry profile's per-LedContainer animation overrides. These were dead code under the GameRunning-based trigger but a latent hazard now that the trigger is no longer game-gated — without scrub, a user who actually runs iRacing could see our LED behavior unexpectedly switch under iRacing's GameCode. Cleared to empty so per-container overrides are game-agnostic.
+
+- `LedProfileSeederService` no longer always flips `activeProfileId`. New safety check: only flips if current selection is empty/null or points to SimHub's built-in `Default Profile`. Existing custom selections are preserved with a log message telling the user how to manually select the F1SimHubLive profile.
+
+- README: extended the "LED config auto-rewire" section to cover both legacy plugin-name rewire *and* the new F1SimHubLive profile seeding. New troubleshooting entry: "LED area shows only Default Profile after install".
+
 ## [1.3.9] — 2026-06-06
 
 ### Added

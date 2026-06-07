@@ -31,6 +31,15 @@ namespace F1SimHubLive
         private System.Threading.Timer? _settingsReloadDebounce;
         private readonly object _settingsReloadLock = new();
 
+        // F1 MultiViewer process detector. Every MvProcessPollMs we check whether
+        // any MultiViewer/F1MV process is running and surface it as the
+        // F1SimHubLive.MultiViewerRunning bool property. LED-profile TriggerFormulas
+        // gate on this so our LEDs only fire while the user is in F1-viewing mode
+        // (MultiViewer is up), and stay dark when the user is gaming or just idle.
+        private System.Threading.Timer? _mvProcessTimer;
+        private bool _mvLastSeen;
+        private const int MvProcessPollMs = 5000;
+
         public void Init(PluginManager pluginManager)
         {
             PluginManager = pluginManager;
@@ -119,6 +128,15 @@ namespace F1SimHubLive
             Register("OvertakeAvailable", false);
             Register("FlagText", "");
             Register("Status", "Initializing");
+            Register("MultiViewerRunning", false);
+
+            // Kick the MultiViewer process check immediately so the property has a
+            // truthful initial value before SimHub starts evaluating LED triggers,
+            // then poll every MvProcessPollMs.
+            UpdateMultiViewerRunning();
+            _mvProcessTimer = new System.Threading.Timer(
+                _ => { try { UpdateMultiViewerRunning(); } catch (Exception ex) { Log($"MV process poll error: {ex.Message}"); } },
+                null, MvProcessPollMs, MvProcessPollMs);
 
             _interp = new Interpolator(_buffer, _settings.OutputHz, _settings.RenderDelayMs);
             _interp.Start();
@@ -429,8 +447,46 @@ namespace F1SimHubLive
         {
             _settingsWatcher?.Dispose();
             _settingsReloadDebounce?.Dispose();
+            _mvProcessTimer?.Dispose();
             _interp?.Dispose();
             _client?.Dispose();
+        }
+
+        /// <summary>
+        /// Polls the live Windows process table for a running F1 MultiViewer instance
+        /// (process names <c>MultiViewer</c> or <c>F1MV</c> — Electron app spawns
+        /// multiple sub-processes, ANY of them present counts). Surfaces the result
+        /// as the <c>F1SimHubLive.MultiViewerRunning</c> SimHub property which LED
+        /// profile TriggerFormulas can gate on, e.g.
+        /// <c>if([F1SimHubLive.MultiViewerRunning] = 1, 1, 0)</c>.
+        /// Logs the first transition each direction so the SimHub log shows when
+        /// MV comes up or goes away. Idempotent on the SetProp call (we still write
+        /// every cycle so a fresh-init SimHub picks up the value regardless of
+        /// dirty-checking).
+        /// </summary>
+        private void UpdateMultiViewerRunning()
+        {
+            bool running = false;
+            try
+            {
+                if (System.Diagnostics.Process.GetProcessesByName("MultiViewer").Length > 0
+                    || System.Diagnostics.Process.GetProcessesByName("F1MV").Length > 0)
+                {
+                    running = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"MV process enumeration failed (treating as not running): {ex.Message}");
+                running = false;
+            }
+
+            if (running != _mvLastSeen)
+            {
+                Log(running ? "MultiViewer detected (LEDs will activate)" : "MultiViewer no longer running (LEDs will deactivate)");
+                _mvLastSeen = running;
+            }
+            SetProp("MultiViewerRunning", running);
         }
 
         private void Register(string name, object initial) =>

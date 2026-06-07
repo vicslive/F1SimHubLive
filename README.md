@@ -71,7 +71,7 @@ The easiest way to deploy F1SimHubLive to a new machine (for example, your media
    - **Welcome** — overview.
    - **Prerequisites** — auto-detects SimHub + F1 MultiViewer install paths, probes the MultiViewer API to confirm your F1 TV subscription is active **and** that Live Timing is actively streaming (a successful `SessionInfo` response — not just `Heartbeat`).
    - **Driver & source** — pick any driver from the dropdown (loaded live from MultiViewer's current grid, with a bundled fallback list). Choose data source (MultiViewer recommended — works for both live and replays).
-   - **Install** — copies the plugin DLLs, dashboard files, writes `F1SimHubLive.Settings.json`, **rewires any legacy plugin-name references in per-device LED configurations** (see [LED config auto-rewire](#led-config-auto-rewire) below), and restarts SimHub.
+   - **Install** — copies the plugin DLLs, dashboard files, writes `F1SimHubLive.Settings.json`, **rewires any legacy plugin-name references in per-device LED configurations** and **seeds the three F1 Live LED profiles** so the wheel ring actually lights up in IDLE mode (see [LED config auto-rewire and profile seeding](#led-config-auto-rewire-and-profile-seeding) below), and restarts SimHub.
 5. After install, in SimHub: enable the plugin under *Settings → Plugins*, then open *Dash Studio → F1RaceSim_GSIFPEV2* and select it on your wheel.
 
 The installer is a single self-contained .exe (~90 MB) — no .NET runtime install required on the target machine. Source for the installer lives under [`installer/`](installer/).
@@ -82,7 +82,11 @@ On launch, the installer asks the GitHub Releases API whether a newer version ex
 
 The installer also reads `FileVersionInfo` of any existing `F1SimHubLive.dll` already deployed under your SimHub directory and logs both the existing and freshly-installed versions to the deploy log pane, so upgrades are explicit (e.g. *"Existing F1SimHubLive.dll detected — version 1.1.0. … Installed F1SimHubLive.dll version 1.1.1."*) rather than silent overwrites.
 
-### LED config auto-rewire
+### LED config auto-rewire and profile seeding
+
+This installer reaches into two distinct parts of SimHub's per-device wheel config:
+
+#### 1. Legacy plugin-name rewire
 
 This plugin was renamed twice during early development (`F1SimSubGSIPlugin` → `F1SimHubGSIPlugin` → `F1SimHubLivePlugin`). Plugin-name string references live in two places SimHub uses:
 
@@ -91,12 +95,43 @@ This plugin was renamed twice during early development (`F1SimSubGSIPlugin` → 
 
 From v1.0.3 onward, the installer scans every SimHub device's `settings.json`, replaces any `F1SimSubGSIPlugin.` and `F1SimHubGSIPlugin.` prefixes with `F1SimHubLivePlugin.`, and writes a timestamped `settings.json.preLedRewire-<YYYYMMDD-HHMMSS>` backup before mutating each touched file. The pass is idempotent — re-running the installer on an already-clean device is a no-op and creates no extra backups.
 
+#### 2. F1SimHubLive LED profile seeding (new in v1.4.0)
+
+The dashboard you see on the LCD area of the wheel and the LED animations on the LED ring are configured **in completely separate parts of the device's `settings.json`**. The dashboard is selected from *SimHub > Dash Studio > pick your device > Idle dashboard*; the LEDs are configured from *SimHub > Devices > GSI Formula Pro Elite V2 > LEDs* and stored under `Settings.LEDS.{leds,buttons,raw}.Profiles`.
+
+SimHub ships every wheel with a single `Default Profile` per LEDs section, and that profile only animates while a Game is running. F1SimHubLive deliberately never has a game running — the F1 broadcast feed comes through the plugin from F1 MultiViewer or F1 live timing — so on a fresh install the wheel LEDs stay completely dark even when the dashboard is correctly showing on the LCD.
+
+To make the LEDs come alive while you're watching F1, three custom profiles need to exist on the device, each with a `TriggerFormula.Expression` of `if([F1SimHubLive.MultiViewerRunning] = 1, 1, 0)` so they fire only when F1 MultiViewer is actually running. From v1.4.0 onward, the installer auto-seeds these on every supported wheel:
+
+| Section in SimHub LEDs tab | Profile name | What it drives |
+|---|---|---|
+| Buttons lighting | `F1SimHubLive` | Static button colors |
+| Telemetry Leds | `F1SimHubLive - Telemetry` | RPM shift-light bar |
+| Individual leds | `F1SimHubLive - Prime Gradient` | Per-LED gradient |
+
+The seed is idempotent (skipped if a profile with that exact `Name` already exists), mints a fresh `ProfileId` per install to avoid GUID collisions, and writes a `settings.json.preLedProfileSeed-<YYYYMMDD-HHMMSS>` backup before mutating the file.
+
+**Safety: your existing racing setup is preserved.** The installer only flips `activeProfileId` to our profile if the current selection is empty or points to SimHub's built-in `Default Profile`. If you already have a custom profile selected (Forza, iRacing, AC, etc.), our profile is added to the dropdown but **not** auto-activated — you select `F1SimHubLive` manually from *SimHub > Devices > GSI Formula Pro Elite V2 > LEDs > <section>* when you want to use it.
+
+**Trigger gate: F1 MultiViewer running.** The seeded profiles only fire when MultiViewer is running on the same machine (checked every 5 seconds via the live process table). Close MultiViewer and the wheel goes dark within ~5 seconds — the profile is still selected, just quiet. This means our profile is safe to leave active permanently: it stays out of the way when you're gaming, and lights up the moment you launch MultiViewer to watch a session.
+
+Currently supports GSI Formula Pro Elite V2 only (DeviceTypeID `EFC17674-559A-44DB-8D24-C6CFD203384D`); other wheels are skipped with a log line.
+
 You'll see lines like this in the deploy log pane:
 ```
 Scanning per-device LED configurations for stale plugin-name references...
-Device 'GSI Formula Pro Elite V2': backed up settings.json -> settings.json.preLedRewire-20260525-204334
+Device 'GSI Formula Pro Elite V2': backed up settings.json -> settings.json.preLedRewire-20260607-110512
 Device 'GSI Formula Pro Elite V2': rewired 10 legacy plugin reference(s) -> F1SimHubLivePlugin.*.
 LED config rewire: patched 10 reference(s) across 1 device(s).
+
+Seeding F1SimHubLive LED profiles (Telemetry / Buttons / Individual) on supported wheels...
+Device 'GSI Formula Pro Elite V2': backed up settings.json -> settings.json.preLedProfileSeed-20260607-110512
+Device 'GSI Formula Pro Elite V2' / section 'leds': inserted profile 'F1SimHubLive - Telemetry' (ProfileId=...).
+Device 'GSI Formula Pro Elite V2' / section 'leds': activeProfileId set to '...'.
+Device 'GSI Formula Pro Elite V2' / section 'buttons': inserted profile 'F1SimHubLive' (ProfileId=...).
+Device 'GSI Formula Pro Elite V2' / section 'raw': inserted profile 'F1SimHubLive - Prime Gradient' (ProfileId=...).
+Device 'GSI Formula Pro Elite V2': LED profile seed complete - inserted=3, already-present=0, activated=3.
+LED profile seed: inserted 3 profile(s) and activated 3 section(s) across 1 device(s).
 ```
 
 ---
@@ -644,7 +679,10 @@ foreach ($p in 'Status','Rpm','Gear','Speed','Position','LapDisplay','TrackStatu
 - The CarData topic is per-driver. Confirm `DriverNumber` matches a driver currently in the field. Spelling/case doesn't matter — F1 uses raw integers as strings.
 
 **Wheel LEDs blink white only — no RPM gradient:**
-- Your per-device LED configuration still references a legacy plugin name (`F1SimSubGSIPlugin.` or `F1SimHubGSIPlugin.`) that no longer loads. Run the v1.0.3+ installer — it auto-rewires these references and creates a `settings.json.preLedRewire-<stamp>` backup. See [LED config auto-rewire](#led-config-auto-rewire) for the full mechanism. If you want to verify manually, search for `F1SimSubGSIPlugin.` or `F1SimHubGSIPlugin.` inside `C:\Program Files (x86)\SimHub\PluginsData\Common\Devices\<your-guid>\settings.json` — there should be zero matches after the rewire.
+- Your per-device LED configuration still references a legacy plugin name (`F1SimSubGSIPlugin.` or `F1SimHubGSIPlugin.`) that no longer loads. Run the v1.0.3+ installer — it auto-rewires these references and creates a `settings.json.preLedRewire-<stamp>` backup. See [LED config auto-rewire and profile seeding](#led-config-auto-rewire-and-profile-seeding) for the full mechanism. If you want to verify manually, search for `F1SimSubGSIPlugin.` or `F1SimHubGSIPlugin.` inside `C:\Program Files (x86)\SimHub\PluginsData\Common\Devices\<your-guid>\settings.json` — there should be zero matches after the rewire.
+
+**LEDs area in SimHub only shows "Default Profile" — wheel ring stays completely dark on a fresh install:**
+- Your install pre-dates v1.4.0 (the F1 Live LED profile seeder). The dashboard on the LCD area and the LED animations on the ring are configured in two **completely separate** sections of the device's `settings.json` — our installer used to only touch the LCD side. From v1.4.0 onward the installer auto-seeds three custom profiles (`F1 Live` for Buttons, `F1 Live- Telemetry for F1 Race viewing` for Telemetry Leds, `F1 Live - Prime Gradient` for Individual leds), each with `TriggerFormula.Expression = if([DataCorePlugin.GameRunning] = 0, 1, 0)` so they fire in IDLE mode instead of waiting for a game to launch. **Fix:** download the v1.4.0+ installer from the [Releases](https://github.com/vicslive/F1SimHubLive/releases) page and re-run it. It creates a `settings.json.preLedProfileSeed-<stamp>` backup before mutating the file and is fully idempotent on subsequent runs. See [LED config auto-rewire and profile seeding](#led-config-auto-rewire-and-profile-seeding) for what gets inserted.
 - Also confirm a SimHub-recognized game is running. The default LED tree gates everything on `DataCorePlugin.GameRunning = 1`, so the gradient won't fire from MultiViewer-only telemetry yet.
 
 **Shift lights look choppy:**

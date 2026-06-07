@@ -49,6 +49,7 @@ public sealed class Deployer
 
     private readonly IdleDashboardService _idle = new();
     private readonly LedConfigRewireService _ledRewire = new();
+    private readonly LedProfileSeederService _ledSeeder = new();
 
     /// <summary>
     /// Per-device idle-dashboard changes recorded during the last deploy. Empty when
@@ -62,6 +63,13 @@ public sealed class Deployer
     /// <c>OccurrencesReplaced=0</c> mean the device was already clean.
     /// </summary>
     public List<LedRewireChange> LastLedRewireChanges { get; private set; } = new();
+
+    /// <summary>
+    /// Per-device LED-profile seed results recorded during the last deploy. Empty
+    /// when no SimHub devices were found; entries with <c>Matched=false</c> are
+    /// devices that aren't on the supported-wheels list.
+    /// </summary>
+    public List<LedProfileSeedChange> LastLedProfileSeedChanges { get; private set; } = new();
 
     private void L(string msg) => Log?.Invoke(msg);
     private void P(int pct) => Progress?.Invoke(pct);
@@ -131,6 +139,32 @@ public sealed class Deployer
         else
         {
             L("LED config rewire: no stale references found.");
+        }
+
+        L("");
+        L("Seeding F1 Live LED profiles (Telemetry / Buttons / Individual) on supported wheels...");
+        LastLedProfileSeedChanges = _ledSeeder.SeedEverywhere(opts.SimHubInstallDir, L);
+        var seededDevices = 0;
+        var seededProfiles = 0;
+        var seededActivated = 0;
+        foreach (var c in LastLedProfileSeedChanges)
+        {
+            if (!c.Modified) continue;
+            seededDevices++;
+            seededProfiles += c.ProfilesInserted;
+            seededActivated += c.SectionsActivated;
+        }
+        if (seededDevices > 0)
+        {
+            L($"LED profile seed: inserted {seededProfiles} profile(s) and activated {seededActivated} section(s) across {seededDevices} device(s).");
+        }
+        else if (LastLedProfileSeedChanges.Any(c => c.Matched))
+        {
+            L("LED profile seed: every supported wheel already has the F1 Live profiles installed and active.");
+        }
+        else
+        {
+            L("LED profile seed: no supported wheel found (the dashboard LCD area will work, but the wheel LEDs will only show Default Profile).");
         }
         P(90);
 

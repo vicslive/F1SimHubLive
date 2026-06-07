@@ -264,6 +264,16 @@ public sealed class LedProfileSeederService
                 });
                 File.WriteAllText(settingsPath, serialized, new UTF8Encoding(false));
 
+                // v1.5.9 defensive: ensure BUILTIN\Users has Modify rights on the
+                // settings.json. If the installer was run elevated, the file may
+                // inherit tighter ACLs that exclude the regular user account that
+                // SimHub runs as — SimHub then silently fails to persist UI picks
+                // on close, and on next start re-reads the stale activeProfileId.
+                // (Vic's Media PC symptom: pick F1 profile, close SimHub, reopen,
+                // back to GSI default. Dev box was fine because its file had Users:FullControl
+                // from an earlier non-elevated install path.)
+                TryEnsureUsersCanWrite(settingsPath, log);
+
                 log?.Invoke(
                     $"Device '{displayName}': LED profile seed complete - inserted={inserted}, already-present={already}, activated={activated}.");
 
@@ -296,6 +306,62 @@ public sealed class LedProfileSeederService
         }
 
         return changes;
+    }
+
+    /// <summary>
+    /// v1.5.9: ensures the local <c>BUILTIN\Users</c> SID has Modify rights on the
+    /// target file and clears the ReadOnly attribute. Called after every successful
+    /// settings.json write. Best-effort — failures are logged but never throw,
+    /// because on some locked-down boxes (group-policy controlled, SeBackupPrivilege
+    /// denied, file on a network share with no ACL support) the SetAccessControl
+    /// call can fail and we still want the install to complete.
+    /// <para>
+    /// Root cause this addresses: when the installer is run elevated (UAC prompt
+    /// accepted), the OS may persist tighter ACLs on newly written files than what
+    /// the SimHub-running user account has. SimHub runs as the regular user, so
+    /// after picking a new LED profile in its UI, the in-memory state updates fine
+    /// but the on-close serialization to settings.json fails silently. Next SimHub
+    /// start reads the old activeProfileId and the user sees their pick reverted.
+    /// </para>
+    /// <para>
+    /// This was specifically the Media-PC bug Vic hit after every install: pick
+    /// F1SimHubLive, close SimHub, reopen, back to default GSI FPE V2 profile.
+    /// The dev box happened to inherit Users:FullControl from an earlier non-elevated
+    /// touch, which is why the dev box didn't show the symptom.
+    /// </para>
+    /// </summary>
+    private static void TryEnsureUsersCanWrite(string filePath, Action<string>? log)
+    {
+        if (!OperatingSystem.IsWindows()) return;
+
+        try
+        {
+            // Clear ReadOnly attribute if set.
+            var attrs = File.GetAttributes(filePath);
+            if ((attrs & FileAttributes.ReadOnly) == FileAttributes.ReadOnly)
+            {
+                File.SetAttributes(filePath, attrs & ~FileAttributes.ReadOnly);
+            }
+
+            // BUILTIN\Users SID is S-1-5-32-545, locale-independent.
+            var usersSid = new System.Security.Principal.SecurityIdentifier(
+                System.Security.Principal.WellKnownSidType.BuiltinUsersSid, null);
+
+            var fi = new FileInfo(filePath);
+            var acl = fi.GetAccessControl();
+
+            var rule = new System.Security.AccessControl.FileSystemAccessRule(
+                usersSid,
+                System.Security.AccessControl.FileSystemRights.Modify | System.Security.AccessControl.FileSystemRights.Synchronize,
+                System.Security.AccessControl.AccessControlType.Allow);
+
+            acl.AddAccessRule(rule);
+            fi.SetAccessControl(acl);
+        }
+        catch (Exception ex)
+        {
+            log?.Invoke($"WARN: could not ensure Users:Modify on '{filePath}': {ex.Message}. SimHub may fail to persist LED profile picks on close.");
+        }
     }
 
     private static JsonObject? FindByName(JsonArray profiles, string name)

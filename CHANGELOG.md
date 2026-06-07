@@ -6,6 +6,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.5.9] — 2026-06-07
+
+### Fixed
+- **Media PC: LED profile picks weren't persisting across SimHub restarts (defensive ACL fix).** After v1.5.8 shipped, Vic tested on Media PC and confirmed the real bug: even when he manually picked F1SimHubLive via SimHub's LED dropdown, the choice didn't survive a close/reopen cycle — every SimHub restart reverted to the GSI FPE V2 default profile. The dev box correctly persisted picks. The LCD always worked fine because dashboards live in a different code path (DashTemplates) that SimHub doesn't try to write at runtime.
+
+  Root cause: when the F1SimHubLive installer is run elevated (UAC prompt accepted), Windows persists tighter ACLs on newly written files than what the SimHub-running user account has. SimHub runs as the regular user (non-elevated), so its serialization of `activeProfileId` to `Program Files\SimHub\PluginsData\Common\Devices\<guid>\settings.json` silently fails on close. On next start SimHub re-reads the stale value from disk. The dev box was the lucky case — its settings.json happened to have `BUILTIN\Users: FullControl` from an earlier non-elevated touch (`ICACLS` showed Users had inherited write rights), so SimHub's user-mode process could persist UI picks. Media PC didn't have that grant.
+
+  Fix in v1.5.9: `LedProfileSeederService.cs` now calls a new `TryEnsureUsersCanWrite()` helper after every successful `settings.json` write. The helper clears any ReadOnly attribute and adds a `BUILTIN\Users: Modify` ACL rule (locale-independent SID `S-1-5-32-545`, so it works on non-English Windows installs too). Best-effort — failures are logged but don't abort the install (some locked-down GP-controlled boxes or network-share installs may not permit ACL changes).
+
+  Effect on Vic's Media PC: install v1.5.9, then SimHub's UI picks will persist across close/reopen for real. Combined with v1.5.8's orphan-GUID safety check and runtime EnsureActiveOnStartup pass, the LED bar will activate on install AND stay activated through all subsequent SimHub sessions.
+
+  Note: this ONLY corrects the ACL on files the F1SimHubLive seeder writes (i.e., the device settings.json for supported wheels). It does not touch any other SimHub config files. Users with the same persistence bug for OTHER LED profiles or other devices will need a separate fix from SimHub upstream — but for our profile on our supported wheels, v1.5.9 is a clean defensive patch.
+
 ## [1.5.8] — 2026-06-07
 
 ### Fixed

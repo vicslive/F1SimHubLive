@@ -58,6 +58,12 @@ namespace F1SimHubLive
             Register("TeamName", "");
             Register("TeamColour", "");
             Register("Source", _settings.Source);
+            // v1.5.6: expose the running plugin version so the wheel LCD can
+            // bind it and Vic can confirm at a glance which release the wheel
+            // is actually loading. Format "1.5.6" — no Major.Minor.Build.Revision
+            // tail, no leading 'v', so the dashboard can render `Ver. 1.5.6`
+            // by concatenation in its Bindings formula.
+            Register("Version", GetPluginVersionString());
             Register("Rpm", 0.0);
             Register("RpmPercent", 0.0);
             Register("RpmShiftPercent", 0.0);
@@ -535,6 +541,33 @@ namespace F1SimHubLive
             PluginManager.SetPropertyValue(name, GetType(), value);
 
         private static void Log(string s) => _log.Info("[F1SimHubLive] " + s);
+
+        /// <summary>
+        /// Returns the plugin's assembly InformationalVersion (e.g. "1.5.6"),
+        /// falling back to the AssemblyVersion if InformationalVersion isn't
+        /// stamped. Trims any "+commitsha" SourceLink suffix the SDK appends
+        /// in CI builds. Used by the LCD dashboard so the wheel shows which
+        /// release is actually loaded.
+        /// </summary>
+        private static string GetPluginVersionString()
+        {
+            try
+            {
+                var asm = Assembly.GetExecutingAssembly();
+                var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+                if (!string.IsNullOrEmpty(info))
+                {
+                    int plus = info!.IndexOf('+');
+                    return plus > 0 ? info.Substring(0, plus) : info;
+                }
+                var ver = asm.GetName().Version;
+                return ver != null ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : "?";
+            }
+            catch
+            {
+                return "?";
+            }
+        }
 
         private static string ShortCompound(string? c)
         {

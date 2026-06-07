@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.5.6] — 2026-06-07
+
+### Added
+- **Wheel LCD now shows the running plugin version** so Vic can confirm at a glance which release is actually loaded — no more guessing whether the wheel picked up the latest build. The bottom-right signature row previously read `github  |  instagram`; it now reads `github  |  instagram  |  Ver. 1.5.6` (the version part is dynamically bound to a new `F1SimHubLive.Version` plugin property and updates automatically every release — no future `.djson` edits required).
+- **New `F1SimHubLive.Version` plugin property** exposed to SimHub, set at `Init` from the assembly's `InformationalVersion` attribute (trimmed of any `+commit-sha` SourceLink suffix). Any other dashboard, formula, or button binding can reference `$prop('F1SimHubLivePlugin.Version')` to display the version too.
+
+### Changed
+- **`@vicslive` signature on the wheel LCD moved from the right side (Left=572) to the left edge (Left=20)** with left-alignment, freeing the right side of the bottom row for the new wider `github | instagram | Ver. X.X.X` strip. Same `Top` position, same font, same color — purely a horizontal shift.
+
 ## [1.5.5] — 2026-06-07
 
 ### Fixed

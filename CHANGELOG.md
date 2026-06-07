@@ -6,6 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.7.2] — 2026-06-07
+
+### Fixed
+- **Driver Picker EXE now actually gets overwritten on every install.** v1.7.1 (and every prior release) silently kept the previous picker EXE on disk if the picker process was open at install time. `Deployer.TryExtractResourceTo` wraps `File.Create(destPath)` in a catch-all that logged the IOException and returned `false` without any visible signal — the install ran to completion, the user thought it worked, and the picker UI kept showing the old version.
+
+  Symptom that surfaced this: on Dev box post-v1.7.1 install, the wheel LCD showed `v1.7.1` (plugin DLL updated correctly because the installer stops SimHub first) but the picker UI version label still read `v1.7.0` (picker process from v1.7.0 auto-launch held the file open at 18:09 when the v1.7.1 install attempted the overwrite).
+
+  v1.7.2 changes:
+    1. New `MaybeStopPicker()` method — mirrors `MaybeStopSimHub()`. Soft-close via `CloseMainWindow()`, wait 1.5s, then `Kill()` any survivors. Called immediately before the picker extract.
+    2. New `ReportExistingPickerVersion()` / `ReportNewlyInstalledPickerVersion()` log pair (analogous to the plugin DLL pair) so the install log reads `Existing picker X → Installed picker Y` at every install. If the overwrite silently fails, the "Installed" line will show the OLD version, making the bug visible during the install itself.
+    3. Loud warning if `TryExtractResourceTo` returns `false` for the picker: "Driver Picker EXE was NOT updated. If you had the picker open during install, close it and re-run the installer."
+
+  The plugin DLL path was always safe because the installer stops SimHub (which has the DLL loaded) at the very start. The picker EXE path had no equivalent step.
+
 ## [1.7.1] — 2026-06-07
 
 ### Fixed

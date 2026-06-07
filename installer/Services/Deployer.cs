@@ -113,9 +113,28 @@ public sealed class Deployer
         {
             L("Copying Driver Picker...");
             string pickerDest = Path.Combine(opts.SimHubInstallDir, "F1SimHubLive-Picker.exe");
-            TryExtractResourceTo("F1SimHubLive-Picker.exe", pickerDest);
+            ReportExistingPickerVersion(pickerDest);
+            // v1.7.2: the driver picker EXE is overwritten in-place at
+            // SimHub root on every install. If the user has the picker
+            // open from the previous version, File.Create throws an
+            // IOException ("file in use by another process") which
+            // TryExtractResourceTo silently swallows — leaving the user
+            // with a fresh plugin DLL but a stale picker EXE (visible
+            // bug: picker UI version label trails the plugin version
+            // shown on the wheel LCD). Mirror MaybeStopSimHub: ask the
+            // picker process to exit, then kill it, before extracting.
+            MaybeStopPicker();
+            if (!TryExtractResourceTo("F1SimHubLive-Picker.exe", pickerDest))
+            {
+                // Loud diagnostic when extract failed. TryExtractResourceTo
+                // already logged the inner exception; this line makes the
+                // root-cause obvious in the install log and the in-UI
+                // log pane so the user can act (close picker, re-run).
+                L("WARNING: Driver Picker EXE was NOT updated. If you had the picker open during install, close it and re-run the installer.");
+            }
             if (File.Exists(pickerDest))
             {
+                ReportNewlyInstalledPickerVersion(pickerDest);
                 CreatePickerShortcut(pickerDest);
             }
         }
@@ -265,6 +284,31 @@ public sealed class Deployer
         }
         Task.Delay(1500).Wait();
         foreach (var p in Process.GetProcessesByName("SimHubWPF"))
+        {
+            try { p.Kill(); p.WaitForExit(2000); } catch { }
+        }
+    }
+
+    /// <summary>
+    /// v1.7.2: stop any running Driver Picker so we can overwrite the
+    /// EXE at SimHub root. Without this, an open picker locks the file
+    /// and the install silently keeps the stale (previous-version)
+    /// picker — the user then sees a version mismatch between the
+    /// picker UI and the wheel LCD (plugin DLL gets updated regardless
+    /// because the plugin DLL is loaded by SimHub, which we already
+    /// stop before extracting). Mirror of <see cref="MaybeStopSimHub"/>.
+    /// </summary>
+    private void MaybeStopPicker()
+    {
+        var procs = Process.GetProcessesByName("F1SimHubLive-Picker");
+        if (procs.Length == 0) return;
+        L($"Stopping {procs.Length} running Driver Picker process(es)...");
+        foreach (var p in procs)
+        {
+            try { p.CloseMainWindow(); } catch { }
+        }
+        Task.Delay(1500).Wait();
+        foreach (var p in Process.GetProcessesByName("F1SimHubLive-Picker"))
         {
             try { p.Kill(); p.WaitForExit(2000); } catch { }
         }
@@ -475,6 +519,55 @@ public sealed class Deployer
             var fvi = FileVersionInfo.GetVersionInfo(pluginPath);
             var fresh = string.IsNullOrWhiteSpace(fvi.FileVersion) ? "unknown" : fvi.FileVersion;
             L($"Installed F1SimHubLive.dll version {fresh}.");
+        }
+        catch
+        {
+            // Non-fatal.
+        }
+    }
+
+    /// <summary>
+    /// v1.7.2: log the picker version BEFORE we overwrite it. Pairs
+    /// with <see cref="ReportNewlyInstalledPickerVersion"/> so the
+    /// install log reads "Existing picker X → Installed picker Y"
+    /// (analogous to the plugin DLL pair). Surfaces the v1.7.1 bug
+    /// where the picker EXE was not actually updated even though the
+    /// installer ran to completion.
+    /// </summary>
+    private void ReportExistingPickerVersion(string pickerPath)
+    {
+        if (!File.Exists(pickerPath))
+        {
+            L("No prior F1SimHubLive-Picker.exe found — fresh install.");
+            return;
+        }
+        try
+        {
+            var fvi = FileVersionInfo.GetVersionInfo(pickerPath);
+            var existing = string.IsNullOrWhiteSpace(fvi.FileVersion) ? "unknown" : fvi.FileVersion;
+            L($"Existing F1SimHubLive-Picker.exe detected — version {existing}.");
+        }
+        catch (Exception ex)
+        {
+            L($"Could not read existing picker version: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// v1.7.2: log the deployed picker version AFTER extraction so the
+    /// installer log makes it obvious whether the new picker actually
+    /// landed on disk. If extraction silently failed and an old EXE
+    /// remained in place, this line will show the OLD version — making
+    /// the bug visible at install time instead of waiting for the user
+    /// to spot a UI version mismatch.
+    /// </summary>
+    private void ReportNewlyInstalledPickerVersion(string pickerPath)
+    {
+        try
+        {
+            var fvi = FileVersionInfo.GetVersionInfo(pickerPath);
+            var fresh = string.IsNullOrWhiteSpace(fvi.FileVersion) ? "unknown" : fvi.FileVersion;
+            L($"Installed F1SimHubLive-Picker.exe version {fresh}.");
         }
         catch
         {

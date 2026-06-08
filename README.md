@@ -2,7 +2,7 @@
 
 **SimHub plugin + custom Dash Studio dashboard that pipes live Formula 1 telemetry from F1's broadcast feed (or MultiViewer replay) onto a SimHub-connected wheel screen.**
 
-![F1RaceSim_GSIFPEV2 dashboard live mid-race — HAMILTON in Ferrari red at 321 km/h, gear 8, RPM 11219, S1 and S2 splits in green and magenta, throttle and brake inputs visible](docs/screenshots/GSIFPEV2-2.png)
+![F1RaceSim_GSIFPEV2 dashboard live during the 2026 Monaco GP — HAMILTON in Ferrari red, lap 45/78, P2, 210 km/h in gear 5 at 11020 RPM, INT and LDR pills both showing car 12 with a +19.045s gap, hard tyres on 16-lap stint, top speed 270 km/h, picker version 1.7.2 visible in the signature block](docs/screenshots/GSIFPEV2-2.png)
 
 The current ``F1RaceSim_GSIFPEV2`` dashboard is laid out for an 800×480 wheel screen and has been validated on the [GSI Formula Pro Elite V2](https://gomezsimindustries.com/products/formula-pro-elite-v2) and [GSI Hyper P1](https://gomezsimindustries.com/products/hyper-p1). Any other SimHub-LCD-capable wheel at the same resolution should also work; resolutions other than 800×480 will crop or scale.
 
@@ -369,7 +369,7 @@ Populated once per session as soon as the upstream `DriverList` is fetched. Empt
 
 `F1RaceSim_GSIFPEV2` is a custom Dash Studio template that ships in `dashboards/F1RaceSim_GSIFPEV2.djson`. It mimics the F1 TV broadcast graphic layout, scaled for the GSI wheel's 800×480 screen.
 
-![F1RaceSim_GSIFPEV2 layout — full broadcast grid showing the timing column, center telemetry column with gear, pace column with LAP, POS, INPUTS, and the bottom strip with TYRE, STOPS, TOP speed, OVT mode, and flag status](docs/screenshots/GSIFPEV2.png)
+![F1RaceSim_GSIFPEV2 layout — full broadcast grid captured during the 2026 Monaco GP red-flag period: top-strip RED badge with red caution triangle, HAMILTON P2 on lap 68/78, gear 0 / 0 RPM (car stopped), INT and LDR pills both reading IN PIT with +1.409s gap, soft tyres on 11-lap stint, 4 pit stops, RED flag widget in the bottom-right](docs/screenshots/GSIFPEV2.png)
 
 ### Layout
 
@@ -411,7 +411,7 @@ The screen is laid out as a 3-column broadcast grid: **left = timing column**, *
 - Middle: **your** driver's three sector times, coloured purple for overall-best, green for personal-best, yellow otherwise.
 - Bottom: leader's three sector times + the gap to leader as a colored badge (`+5.985`) + `LDR` pill with leader's car number and **the leader's last lap time** (e.g. `1:29.108`).
 
-> ℹ️ The INT/LDR pill **center values** show the *other car's* most recent lap time (so you can compare pace at a glance — your last lap vs. the car ahead's vs. the leader's, all displayed simultaneously). The colored gap badges next to each pill still show the relative time delta. Screenshots above pre-date v1.3.6 and show all three pills with the picked driver's own lap time — see the v1.3.6 changelog entry for the fix.
+> ℹ️ The INT/LDR pill **center values** show the *other car's* most recent lap time (so you can compare pace at a glance — your last lap vs. the car ahead's vs. the leader's, all displayed simultaneously). The colored gap badges next to each pill show the relative time delta.
 
 **Right pace column** — LAP `M/N` and POSITION `X/N` pills, the **INPUTS** panel (`BRAKE PRESSURE` yellow bar above, `THROTTLE POSITION` white bar below — same convention as the F1 international feed input overlay), the `@vicslive` signature widget, and a LAST/GAP readout for the selected driver's most recent lap time and current race gap to leader.
 
@@ -463,6 +463,17 @@ The dashboard uses **two** flag indicators that stay in sync:
 - 🔴 Red text + 🔺 red triangle = RED flag (race halted)
 - ⚪ White text = CHEQUERED (race finished)
 
+### Flag states on the wheel
+
+The plugin doesn't just drive the LCD — the same race-control flag state lights up the wheel's button-back LEDs and side LED bars in real time, so peripheral vision picks up the race state without you needing to read the LCD. All four photos below were captured live during the **2026 Monaco GP** — the race in which Kimi Antonelli became the youngest Monaco winner ever (19 years, 9 months, 13 days — breaking Hamilton's 2008 record at 23) and which was red-flagged for 37 minutes after a multi-car incident.
+
+| State | Wheel |
+|---|---|
+| 🟡 **Safety Car** — full-course caution | ![Wheel during Safety Car: button-back LEDs and side LED bar blinking yellow](docs/screenshots/wheel-safety-car.jpg) |
+| 🟡 **Yellow flag** — local caution | ![Wheel during yellow flag: button-back LEDs and side LED bar in yellow](docs/screenshots/wheel-yellow-flag.jpg) |
+| 🔴 **Red flag** — race halted | ![Wheel during the historic Monaco GP red flag: button-back LEDs and side LED bar in red](docs/screenshots/wheel-red-flag.jpg) |
+| 🏁 **Chequered flag** — race finished | ![Wheel at the chequered flag as Antonelli took the win — every button lit in a different celebration color](docs/screenshots/wheel-chequered.jpg) |
+
 ---
 
 ## Driver Picker (mid-race driver switching + live timing)
@@ -474,7 +485,7 @@ warm-up after a restart. That's what the **F1SimHubLive Driver Picker** is for
 MultiViewer with per-driver speed, lap times, gap/interval, tyre stints, pit
 counts, and PB/SB-coloured sector strips.
 
-![Driver Picker — full live-timing view](docs/screenshots/picker-overview.png)
+![Driver Picker v1.7.2 full live-timing view captured during the 2026 Monaco GP — header shows "Monaco GP: Race, Lap 53/78, 25 left", HAM #44 selected with a live RPM bar, full 22-driver field sorted by position with ANT (Antonelli) leading at P1, team-colored TLA tiles, live speed in km/h, last and best lap times, INT and LDR gaps, tyre compound pills with stint age, pit counts, and per-driver three-row sector strips with PB/SB color coding](docs/screenshots/picker-overview.png)
 
 **Full UI reference: [PICKER.md](PICKER.md)** — every element, every colour,
 every interaction, plus screenshots and troubleshooting.

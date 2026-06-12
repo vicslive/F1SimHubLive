@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.7.6] — 2026-06-12
+
+### Changed
+- **Picker — per-driver cluster RPM readout: white + larger.** The integer RPM line beneath each gear ring goes from red `#FF4040` FS=10 SemiBold to white `#E8E8EE` FS=12 Bold for better legibility on the dark row background. No layout shift — the cluster column already had headroom for the larger glyphs (5-digit max RPM at Consolas FS=12 ≈ 36 px in a 50-px column).
+
 ## [1.7.5] — 2026-06-12
 
 ### Added

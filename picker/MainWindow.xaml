@@ -462,8 +462,8 @@
                                                    ToolTip="Current gear (MV CarData ch.3)" />
                                     </Grid>
                                     <TextBlock Text="{Binding RpmText}"
-                                               FontSize="10" FontWeight="SemiBold"
-                                               Foreground="#FF4040"
+                                               FontSize="12" FontWeight="Bold"
+                                               Foreground="#E8E8EE"
                                                FontFamily="Consolas"
                                                TextAlignment="Center"
                                                HorizontalAlignment="Center"

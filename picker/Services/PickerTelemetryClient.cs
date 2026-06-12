@@ -12,6 +12,13 @@ using Newtonsoft.Json.Linq;
 namespace F1SimHubLive.Picker.Services;
 
 /// <summary>
+/// One driver's instantaneous control inputs harvested from a single
+/// CarData entry. Channel sources documented on
+/// <see cref="PickerTelemetryClient.TryParseLatestNJson(string, string, out double, out int, out double, out DateTime, out Dictionary{string, int}, out Dictionary{string, DriverInputs}, out string)"/>.
+/// </summary>
+public readonly record struct DriverInputs(int Gear, double Throttle, double Rpm);
+
+/// <summary>
 /// Polls F1 MultiViewer's local CarData endpoint and reports the most
 /// recent RPM value for the active driver. Used by the picker's LED
 /// preview bar so the user sees the same shift-light curve the wheel is
@@ -64,11 +71,31 @@ internal sealed class PickerTelemetryClient : IDisposable
     public event Action<double>? OnRpm;
     public event Action<string>? OnStatus;
     /// <summary>
+    /// Fires every fresh CarData entry with the selected driver's current
+    /// gear (channel "3"). 0 = neutral, -1 = reverse, 1..8 = gear number.
+    /// Added in v1.7.4 to drive the picker's broadcast-style input cluster.
+    /// </summary>
+    public event Action<int>? OnGear;
+    /// <summary>
+    /// Fires every fresh CarData entry with the selected driver's current
+    /// throttle position (channel "4"), 0–100 (percent). Added in v1.7.4
+    /// to drive the picker's broadcast-style input cluster.
+    /// </summary>
+    public event Action<double>? OnThrottle;
+    /// <summary>
     /// Fires every poll with the latest speed in km/h for every driver
     /// that appeared in the freshest CarData entry. Empty dictionary if
     /// CarData wasn't parseable. Keyed by racing number (e.g. "44").
     /// </summary>
     public event Action<IReadOnlyDictionary<string, int>>? OnSpeedsBatch;
+    /// <summary>
+    /// Fires every poll with the latest inputs (gear + throttle + RPM) for
+    /// every driver in the freshest CarData entry. Added in v1.7.4 so the
+    /// per-row driver list can render F1-Live-Timing-style per-driver
+    /// clusters (gear letter + RPM number). Empty dictionary if CarData
+    /// wasn't parseable. Keyed by racing number (e.g. "44").
+    /// </summary>
+    public event Action<IReadOnlyDictionary<string, DriverInputs>>? OnInputsBatch;
 
     /// <summary>
     /// Fires once when the parser first throws on a CarData response.
@@ -158,12 +185,17 @@ internal sealed class PickerTelemetryClient : IDisposable
                 string json = await _http.GetStringAsync(url, ct).ConfigureAwait(false);
 
                 // Parse once, harvest both: per-driver speeds (every car in
-                // the freshest entry) AND the selected driver's RPM.
-                if (TryParseLatestNJson(json, driver, out double rpm, out DateTime utc, out var speeds, out string? parseError))
+                // the freshest entry), per-driver inputs (gear/throttle/rpm),
+                // AND the selected driver's RPM/gear/throttle convenience values.
+                if (TryParseLatestNJson(json, driver, out double rpm, out int gear, out double throttle, out DateTime utc, out var speeds, out var inputsBatch, out string? parseError))
                 {
                     if (speeds.Count > 0)
                     {
                         OnSpeedsBatch?.Invoke(speeds);
+                    }
+                    if (inputsBatch.Count > 0)
+                    {
+                        OnInputsBatch?.Invoke(inputsBatch);
                     }
 
                     if (utc > _lastEmittedUtc)
@@ -171,6 +203,8 @@ internal sealed class PickerTelemetryClient : IDisposable
                         _lastEmittedUtc = utc;
                         LastSuccessfulParseUtc = DateTime.UtcNow;
                         OnRpm?.Invoke(rpm);
+                        OnGear?.Invoke(gear);
+                        OnThrottle?.Invoke(throttle);
                         if (!everConnected)
                         {
                             everConnected = true;
@@ -244,10 +278,36 @@ internal sealed class PickerTelemetryClient : IDisposable
         out DateTime utc,
         out Dictionary<string, int> speeds,
         out string? parseError)
+        => TryParseLatestNJson(json, driverNumber, out rpm, out _, out _, out utc, out speeds, out _, out parseError);
+
+    /// <summary>
+    /// Extended overload (v1.7.4): also harvests gear (channel "3") and
+    /// throttle (channel "4") for the selected driver from the freshest
+    /// CarData entry, AND batches per-driver inputs for every car in the
+    /// entry so the picker can render a per-row cluster like F1 Live Timing.
+    /// </summary>
+    /// <param name="rpm">Selected driver's RPM (channel 0).</param>
+    /// <param name="gear">Selected driver's gear (channel 3). 0 if missing.</param>
+    /// <param name="throttle">Selected driver's throttle 0–100 (channel 4). 0 if missing.</param>
+    /// <param name="speeds">Speed in km/h for every car in the entry (channel 2).</param>
+    /// <param name="inputs">Per-driver inputs (Gear/Throttle/Rpm) for every car in the entry that has channels 0/3/4 visible.</param>
+    internal static bool TryParseLatestNJson(
+        string json,
+        string driverNumber,
+        out double rpm,
+        out int gear,
+        out double throttle,
+        out DateTime utc,
+        out Dictionary<string, int> speeds,
+        out Dictionary<string, DriverInputs> inputs,
+        out string? parseError)
     {
         rpm = 0;
+        gear = 0;
+        throttle = 0;
         utc = DateTime.MinValue;
         speeds = new Dictionary<string, int>();
+        inputs = new Dictionary<string, DriverInputs>();
         parseError = null;
 
         JObject root;
@@ -269,34 +329,38 @@ internal sealed class PickerTelemetryClient : IDisposable
         if (root["Entries"] is not JArray entries || entries.Count == 0)
             return false;
 
-        // Walk in reverse to find the freshest entry that has data.
-        // We harvest speeds for ALL drivers from that single entry —
-        // CarData payloads typically carry the full grid per frame.
         for (int i = entries.Count - 1; i >= 0; i--)
         {
             var entry = entries[i];
             if (entry?["Cars"] is not JObject cars) continue;
 
-            // Speed for every driver in this entry (channel "2" = km/h).
             foreach (var carProp in cars.Properties())
             {
                 if (carProp.Value?["Channels"] is not JObject ch) continue;
                 var speedTok = ch["2"];
-                if (speedTok == null) continue;
-                double spdKmh = TryReadDouble(speedTok);
-                speeds[carProp.Name] = (int)Math.Round(spdKmh);
+                if (speedTok != null)
+                {
+                    double spdKmh = TryReadDouble(speedTok);
+                    speeds[carProp.Name] = (int)Math.Round(spdKmh);
+                }
+                // Per-driver gear / throttle / rpm — fold into the batch
+                // dict so MainWindow can push them into the matching
+                // DriverTimingRow. Missing channels degrade silently to 0.
+                int g = ch["3"] is JToken gTok ? (int)TryReadDouble(gTok) : 0;
+                double t = ch["4"] is JToken tTok ? TryReadDouble(tTok) : 0;
+                double r = ch["0"] is JToken rTok ? TryReadDouble(rTok) : 0;
+                inputs[carProp.Name] = new DriverInputs(g, t, r);
             }
 
-            // RPM for the selected driver (channel "0").
-            if (cars[driverNumber] is JObject car
-                && car["Channels"] is JObject channels
-                && channels["0"] is JToken rpmTok)
+            // Selected-driver convenience values (drive the header cluster
+            // + LED preview). Reuse the batch entry so we don't re-walk JSON.
+            if (inputs.TryGetValue(driverNumber, out var sel))
             {
-                rpm = TryReadDouble(rpmTok);
+                rpm = sel.Rpm;
+                gear = sel.Gear;
+                throttle = sel.Throttle;
             }
 
-            // Utc on the entry. Fall back to UtcNow so the dedup filter
-            // still advances even if MV omits Utc on some payload shape.
             var utcTok = entry["Utc"];
             if (utcTok != null && DateTime.TryParse(utcTok.ToString(), out var parsedUtc))
                 utc = parsedUtc.ToUniversalTime();

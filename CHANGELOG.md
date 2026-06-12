@@ -6,6 +6,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.7.5] — 2026-06-12
+
+### Added
+- **Picker — throttle arc on every gear-cluster ring.** The dark ring around each driver's gear letter now hosts a **blue clockwise arc** (`#3399FF`, 3px stroke, round caps) that sweeps from ~8 o'clock around the top to ~4 o'clock as the driver's throttle goes 0 → 100 %. Closes the visual gap vs F1 Live Timing, which uses exactly this pattern on its per-row driver bar.
+
+### Changed
+- New `ThrottleToArcGeometryConverter` (`picker/Services/`) — one-way `IValueConverter` from `double` throttle % to a frozen `PathGeometry` containing one `ArcSegment`. Tunable starting angle / max sweep / radius / min-visible-throttle as `IValueConverter` properties so future style adjustments don't need code changes. Geometry is frozen before return so it's safe to share across all rows and across threads.
+- Cluster Grid in `MainWindow.xaml` now layers `Ellipse` (background ring) → `Path` (throttle arc) → `TextBlock` (gear letter). The `Path` has `IsHitTestVisible="False"` so the driver-row click target is unaffected.
+
+## [1.7.4] — 2026-06-12
+
+### Added
+- **Picker — broadcast-style per-driver input cluster.** Every row in the live-timing driver list now shows a small dark circular ring with the **current gear letter centered** (`N` / `R` / `1`–`8`) and the **integer RPM** in red beneath, matching the F1 Live Timing per-row layout. Slots between the team-colour TLA tile and the speed column — no other row content moved.
+- **Picker — header focused-driver cluster.** Just left of the live RPM readout in the LED preview Border: a **vertical green throttle bar** (0–100%, MV CarData ch.4) and a **big gear letter** (white, MV CarData ch.3) for the currently-selected driver. Pairs with the existing RPM digits + LED shift-light strip so the whole header reads as a single broadcast-style status block for "your driver".
+
+### Changed
+- **`PickerTelemetryClient.cs`** — new `DriverInputs(Gear, Throttle, Rpm)` record + `OnInputsBatch` event that fires every CarData poll with one entry per driver in the freshest payload. The parser walks all `Cars.*.Channels` once and harvests channels `0` (RPM), `2` (speed km/h), `3` (gear), and `4` (throttle %) in a single pass, so per-row updates cost the same as the pre-existing per-row speed updates. Selected-driver convenience events `OnRpm` / `OnGear` / `OnThrottle` reuse the same batch entry (no second JSON walk).
+- **`DriverTimingRow.cs`** — new `Gear` / `Throttle` / `Rpm` observable properties, plus computed `GearText` (broadcast formatting: `0 → "N"`, `<0 → "R"`, else digit) and `RpmText` (integer, blank when zero so unloaded rows don't show "0").
+- **`MainWindow.xaml`** — row Grid gains a new 50-px column at index 2 for the cluster; subsequent columns (speed, LAST/BEST, INT/LDR, tires, PIT, sectors) shift +1.
+
+### Notes
+- This release initially attempted to mount the cluster on the wheel LCD (`F1RaceSim_GSIFPEV2.djson`). That was the wrong host — the cluster is for the **picker** (desktop UI), not the wheel. The dashboard change has been fully reverted; the wheel layout is unchanged from v1.7.2. See PR #25 for the full diff including the revert.
+- The header throttle bar and gear letter use the selected-driver convenience events, so they only update when the user picks a different driver in the picker. The per-row cluster updates every CarData frame (every ~200ms) for every visible driver — no perceptible cost since the data was already being harvested for `OnSpeedsBatch`.
+
 ## [1.7.2] — 2026-06-07
 
 ### Fixed

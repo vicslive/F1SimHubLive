@@ -157,6 +157,64 @@ public sealed class DriverTimingRow : INotifyPropertyChanged
         set => SetField(ref _speedKmh, value);
     }
 
+    private int _gear;
+    /// <summary>
+    /// Current gear from MultiViewer CarData channel "3". v1.7.4.
+    /// 0 = neutral, -1 = reverse, 1..8 = gear number.
+    /// 0 when telemetry isn't flowing or the driver isn't in the freshest entry.
+    /// </summary>
+    public int Gear
+    {
+        get => _gear;
+        set
+        {
+            if (_gear == value) return;
+            _gear = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Gear)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GearText)));
+        }
+    }
+
+    private double _throttle;
+    /// <summary>
+    /// Current throttle position (0-100) from MultiViewer CarData channel "4". v1.7.4.
+    /// </summary>
+    public double Throttle
+    {
+        get => _throttle;
+        set => SetField(ref _throttle, value);
+    }
+
+    private double _rpm;
+    /// <summary>
+    /// Current RPM from MultiViewer CarData channel "0". v1.7.4.
+    /// </summary>
+    public double Rpm
+    {
+        get => _rpm;
+        set
+        {
+            if (_rpm == value) return;
+            _rpm = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Rpm)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RpmText)));
+        }
+    }
+
+    /// <summary>
+    /// Broadcast-style gear letter: "N" for neutral, "R" for reverse,
+    /// otherwise the gear digit. v1.7.4. Computed; raises PropertyChanged
+    /// whenever <see cref="Gear"/> changes via the dependent-property
+    /// fan-out in <see cref="SetField"/>.
+    /// </summary>
+    public string GearText => _gear == 0 ? "N" : _gear < 0 ? "R" : _gear.ToString();
+
+    /// <summary>
+    /// Integer RPM for display in the per-row cluster. v1.7.4.
+    /// Empty string when zero so unloaded rows render blank instead of "0".
+    /// </summary>
+    public string RpmText => _rpm <= 0 ? "" : ((int)System.Math.Round(_rpm)).ToString();
+
     private bool _isCurrent;
     /// <summary>True for the driver currently written in settings.json.</summary>
     public bool IsCurrent

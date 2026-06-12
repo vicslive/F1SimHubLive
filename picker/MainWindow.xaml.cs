@@ -150,6 +150,25 @@ public partial class MainWindow : Window
             RpmReadout.Foreground = HealthyRpmBrush;
             RpmReadout.ToolTip = "Live RPM (MultiViewer CarData)";
         }));
+        // v1.7.4: broadcast-style input cluster — gear letter + throttle bar.
+        // Same source (MV CarData), same dispatcher pattern, same MinValue
+        // reset semantics as OnRpm via the shared _lastEmittedUtc gate.
+        _telemetry.OnGear += gear => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            // 0 = neutral, -1 = reverse, 1..8 = gear number. Broadcast format.
+            string text = gear == 0
+                ? "N"
+                : gear < 0 ? "R" : gear.ToString();
+            GearReadout.Text = text;
+        }));
+        _telemetry.OnThrottle += t => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            // CarData channel 4 is already 0-100 in F1 SignalR. Clamp for
+            // sanity in case MV ever sends a negative-spike artifact at the
+            // start of a frame.
+            double clamped = t < 0 ? 0 : (t > 100 ? 100 : t);
+            ThrottleBar.Value = clamped;
+        }));
         _telemetry.OnStatus += s => Dispatcher.BeginInvoke(new Action(() =>
         {
             // Telemetry status is informational; the live-timing client owns
@@ -194,6 +213,22 @@ public partial class MainWindow : Window
                 if (speeds.TryGetValue(row.RacingNumber, out var spd))
                 {
                     row.SpeedKmh = spd;
+                }
+            }
+        }));
+        // v1.7.4: per-driver inputs batch (gear + throttle + rpm) — pushed
+        // into each row so the F1-Live-Timing-style cluster (gear letter +
+        // RPM number) on every row stays current.
+        _telemetry.OnInputsBatch += inputs => Dispatcher.BeginInvoke(new Action(() =>
+        {
+            var rows = _liveTimingClient.Rows;
+            foreach (var row in rows)
+            {
+                if (inputs.TryGetValue(row.RacingNumber, out var inp))
+                {
+                    row.Gear = inp.Gear;
+                    row.Throttle = inp.Throttle;
+                    row.Rpm = inp.Rpm;
                 }
             }
         }));

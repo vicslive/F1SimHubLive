@@ -181,6 +181,33 @@
                                TextAlignment="Right"
                                FontFamily="Consolas"
                                ToolTip="Live RPM (MultiViewer telemetry)" />
+                    <!-- Big gear letter sits just left of the RPM readout.
+                         Broadcast convention: N=neutral, R=reverse,
+                         1..8=current gear. v1.7.4. -->
+                    <TextBlock x:Name="GearReadout"
+                               DockPanel.Dock="Right"
+                               Text="—"
+                               FontSize="22" FontWeight="Bold"
+                               Foreground="#FFFFFF"
+                               VerticalAlignment="Center"
+                               Margin="6,0,4,0"
+                               MinWidth="22"
+                               TextAlignment="Center"
+                               FontFamily="Consolas"
+                               ToolTip="Live gear (MultiViewer CarData channel 3)" />
+                    <!-- Thin vertical throttle bar on the left of the LED
+                         strip, fills bottom-up green. v1.7.4. -->
+                    <ProgressBar x:Name="ThrottleBar"
+                                 DockPanel.Dock="Left"
+                                 Orientation="Vertical"
+                                 Minimum="0" Maximum="100" Value="0"
+                                 Width="8" Height="22"
+                                 Margin="2,0,8,0"
+                                 Background="#1F1F26"
+                                 Foreground="#00CC44"
+                                 BorderBrush="#2A2A33"
+                                 BorderThickness="1"
+                                 ToolTip="Live throttle % (MultiViewer CarData channel 4)" />
                     <ItemsControl x:Name="LedStrip">
                         <ItemsControl.ItemsPanel>
                             <ItemsPanelTemplate>
@@ -355,6 +382,10 @@
                                     <ColumnDefinition Width="26" />
                                     <!-- Team-colour TLA tile -->
                                     <ColumnDefinition Width="52" />
+                                    <!-- v1.7.4: per-driver input cluster (gear circle +
+                                         RPM number underneath), matches F1 Live Timing
+                                         pattern. -->
+                                    <ColumnDefinition Width="50" />
                                     <!-- Current speed (km/h) -->
                                     <ColumnDefinition Width="72" />
                                     <!-- LAST + BEST lap times — widened from 92 to 120
@@ -402,10 +433,38 @@
                                                VerticalAlignment="Center" />
                                 </Border>
 
+                                <!-- v1.7.4: per-driver input cluster. Circular ring with
+                                     the gear letter centered, RPM number in red beneath.
+                                     Matches the F1 Live Timing per-row layout shown in
+                                     the broadcast feed. Bound to MV CarData channels 3
+                                     (gear) and 0 (rpm) via PickerTelemetryClient.OnInputsBatch. -->
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center"
+                                            HorizontalAlignment="Center" Margin="0,0,4,0">
+                                    <Grid Width="34" Height="34">
+                                        <Ellipse Stroke="#3A3A44" StrokeThickness="2"
+                                                 Fill="#0F0F14" />
+                                        <TextBlock Text="{Binding GearText}"
+                                                   FontSize="18" FontWeight="Black"
+                                                   Foreground="#E8E8EE"
+                                                   FontFamily="Consolas"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   ToolTip="Current gear (MV CarData ch.3)" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding RpmText}"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="#FF4040"
+                                               FontFamily="Consolas"
+                                               TextAlignment="Center"
+                                               HorizontalAlignment="Center"
+                                               Margin="0,1,0,0"
+                                               ToolTip="Current RPM (MV CarData ch.0)" />
+                                </StackPanel>
+
                                 <!-- Current speed (km/h) — big number with a tiny unit label.
                                      Updated from MV CarData channel "2" via the
                                      telemetry client's OnSpeedsBatch event. -->
-                                <StackPanel Grid.Column="2" VerticalAlignment="Center"
+                                <StackPanel Grid.Column="3" VerticalAlignment="Center"
                                             HorizontalAlignment="Right"
                                             Margin="0,0,6,0">
                                     <TextBlock Text="{Binding SpeedKmh}"
@@ -423,7 +482,7 @@
                                 </StackPanel>
 
                                 <!-- LAST + BEST lap times stack -->
-                                <StackPanel Grid.Column="3" VerticalAlignment="Center"
+                                <StackPanel Grid.Column="4" VerticalAlignment="Center"
                                             Margin="0,0,4,0">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <TextBlock Text="LAST"
@@ -462,7 +521,7 @@
 
                                 <!-- INT + LDR stack (matches MultiViewer terminology:
                                      INT = interval to car ahead, LDR = gap to leader) -->
-                                <StackPanel Grid.Column="4" VerticalAlignment="Center"
+                                <StackPanel Grid.Column="5" VerticalAlignment="Center"
                                             Margin="0,0,4,0">
                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                         <TextBlock Text="INT"
@@ -503,7 +562,7 @@
                                      at the current visual size — the whole row height
                                      is now tuned around the tire stack's natural
                                      footprint (28px badge + 1 + ~10 text = ~40px). -->
-                                <StackPanel Grid.Column="5"
+                                <StackPanel Grid.Column="6"
                                             Orientation="Vertical"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center">
@@ -526,7 +585,7 @@
                                 </StackPanel>
 
                                 <!-- Pit count -->
-                                <StackPanel Grid.Column="6"
+                                <StackPanel Grid.Column="7"
                                             Orientation="Vertical"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
@@ -553,7 +612,7 @@
                                      stays uniform across S1/S2/S3 — without this the
                                      sector with the most mini-sectors visually has
                                      skinnier bars than the others. -->
-                                <Grid Grid.Column="7" Margin="4,2,2,2">
+                                <Grid Grid.Column="8" Margin="4,2,2,2">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="{Binding Sectors[0].SegmentCount, Converter={StaticResource CountToGridStar}}" />
                                         <ColumnDefinition Width="{Binding Sectors[1].SegmentCount, Converter={StaticResource CountToGridStar}}" />

@@ -6,21 +6,20 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
-## [1.7.3] — 2026-06-12
+## [1.7.4] — 2026-06-12
 
 ### Added
-- **Dashboard `InputCluster` — compact broadcast-style throttle / gear / RPM gauge.** New 3-widget group inserted into `F1RaceSim_GSIFPEV2.djson` (top-level `InputCluster` Layer, appended to the end of the F1Live screen's `Items[]` for clean z-order on top). Inspired by the F1 Live Timing top-bar gauge that shows all three inputs at a glance — a perfect "what is the driver doing right now" indicator during practice and quali sessions.
+- **Picker — broadcast-style per-driver input cluster.** Every row in the live-timing driver list now shows a small dark circular ring with the **current gear letter centered** (`N` / `R` / `1`–`8`) and the **integer RPM** in red beneath, matching the F1 Live Timing per-row layout. Slots between the team-colour TLA tile and the speed column — no other row content moved.
+- **Picker — header focused-driver cluster.** Just left of the live RPM readout in the LED preview Border: a **vertical green throttle bar** (0–100%, MV CarData ch.4) and a **big gear letter** (white, MV CarData ch.3) for the currently-selected driver. Pairs with the existing RPM digits + LED shift-light strip so the whole header reads as a single broadcast-style status block for "your driver".
 
-  Widgets (all under `InputCluster`):
-    1. **`InputThrottleGauge`** — `CircularGaugeItem` 70×70 at `L=350 T=345`, bound to `F1SimHubLivePlugin.Throttle` (0–100). Bright green (`#FF00CC44`) arc filling clockwise on a dark grey (`#FF2A2A2A`) ring background. Arc sweep `MinAngle=135 → MaxAngle=405` = 270° span with the gap at the bottom (broadcast convention; leaves room for the RPM digits below the ring). Stroke 6px.
-    2. **`InputGearMini`** — overlay `TextItem` 70×70 at the same coords, Oswald Bold FS=28 white, centered (HA=1 VA=1). Bound to `F1SimHubLivePlugin.Gear` with broadcast formatting: `0 → "N"`, `-1 → "R"`, else the digit.
-    3. **`InputRpmMini`** — `TextItem` 80×16 at `L=345 T=404`, Oswald FS=12 white, centered. Bound to `Math.round(F1SimHubLivePlugin.Rpm)` — integer RPM, no decimals.
+### Changed
+- **`PickerTelemetryClient.cs`** — new `DriverInputs(Gear, Throttle, Rpm)` record + `OnInputsBatch` event that fires every CarData poll with one entry per driver in the freshest payload. The parser walks all `Cars.*.Channels` once and harvests channels `0` (RPM), `2` (speed km/h), `3` (gear), and `4` (throttle %) in a single pass, so per-row updates cost the same as the pre-existing per-row speed updates. Selected-driver convenience events `OnRpm` / `OnGear` / `OnThrottle` reuse the same batch entry (no second JSON walk).
+- **`DriverTimingRow.cs`** — new `Gear` / `Throttle` / `Rpm` observable properties, plus computed `GearText` (broadcast formatting: `0 → "N"`, `<0 → "R"`, else digit) and `RpmText` (integer, blank when zero so unloaded rows don't show "0").
+- **`MainWindow.xaml`** — row Grid gains a new 50-px column at index 2 for the cluster; subsequent columns (speed, LAST/BEST, INT/LDR, tires, PIT, sectors) shift +1.
 
-  Placement rationale: occupies the previously-empty strip at `T=343-420, L=300-440` that sits between the Leader sector row (`B=309`), the Behind-driver cluster (`R=284`), the Signature widgets (`L=442`), and the bottom info-pill strip (`T=420`). No existing widget moved or resized.
-
-  No plugin code change — all bindings use SimHub properties that have been exposed since v1.0.0 (`Throttle`, `Gear`, `Rpm`). Plumbing was already complete; this release just makes them visible as a compact cluster on the LCD.
-
-  Backup of the pre-edit djson saved as `F1RaceSim_GSIFPEV2.djson.bak-pre-input-cluster-20260612100948` so the v1.7.2 layout can be restored byte-for-byte if needed.
+### Notes
+- This release initially attempted to mount the cluster on the wheel LCD (`F1RaceSim_GSIFPEV2.djson`). That was the wrong host — the cluster is for the **picker** (desktop UI), not the wheel. The dashboard change has been fully reverted; the wheel layout is unchanged from v1.7.2. See PR #25 for the full diff including the revert.
+- The header throttle bar and gear letter use the selected-driver convenience events, so they only update when the user picks a different driver in the picker. The per-row cluster updates every CarData frame (every ~200ms) for every visible driver — no perceptible cost since the data was already being harvested for `OnSpeedsBatch`.
 
 ## [1.7.2] — 2026-06-07
 

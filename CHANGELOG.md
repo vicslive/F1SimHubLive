@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.7.5] — 2026-06-12
+
+### Added
+- **Picker — throttle arc on every gear-cluster ring.** The dark ring around each driver's gear letter now hosts a **blue clockwise arc** (`#3399FF`, 3px stroke, round caps) that sweeps from ~8 o'clock around the top to ~4 o'clock as the driver's throttle goes 0 → 100 %. Closes the visual gap vs F1 Live Timing, which uses exactly this pattern on its per-row driver bar.
+
+### Changed
+- New `ThrottleToArcGeometryConverter` (`picker/Services/`) — one-way `IValueConverter` from `double` throttle % to a frozen `PathGeometry` containing one `ArcSegment`. Tunable starting angle / max sweep / radius / min-visible-throttle as `IValueConverter` properties so future style adjustments don't need code changes. Geometry is frozen before return so it's safe to share across all rows and across threads.
+- Cluster Grid in `MainWindow.xaml` now layers `Ellipse` (background ring) → `Path` (throttle arc) → `TextBlock` (gear letter). The `Path` has `IsHitTestVisible="False"` so the driver-row click target is unaffected.
+
 ## [1.7.4] — 2026-06-12
 
 ### Added

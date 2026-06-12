@@ -25,6 +25,7 @@
         <svc:PositionToTextConverter x:Key="PositionToText" />
         <svc:TruthyToVisibilityConverter x:Key="TruthyToVisibility" />
         <svc:CountToGridStarConverter x:Key="CountToGridStar" />
+        <svc:ThrottleToArcGeometryConverter x:Key="ThrottleToArc" />
 
         <Style x:Key="DriverButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#1A1A20" />
@@ -443,6 +444,15 @@
                                     <Grid Width="34" Height="34">
                                         <Ellipse Stroke="#3A3A44" StrokeThickness="2"
                                                  Fill="#0F0F14" />
+                                        <!-- v1.7.5: blue throttle arc — sweeps clockwise
+                                             from ~8 o'clock around the ring as throttle
+                                             goes 0->100. Matches the F1 Live Timing
+                                             per-row gear-ring throttle indicator. -->
+                                        <Path Stroke="#3399FF" StrokeThickness="3"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              Data="{Binding Throttle, Converter={StaticResource ThrottleToArc}}"
+                                              IsHitTestVisible="False" />
                                         <TextBlock Text="{Binding GearText}"
                                                    FontSize="18" FontWeight="Black"
                                                    Foreground="#E8E8EE"

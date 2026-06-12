@@ -846,6 +846,8 @@ F1 live timing data is proprietary to Formula 1. This plugin is a fan tool and i
 |---|---|
 | [CHANGELOG.md](CHANGELOG.md) | Version history. v1.0.1 ships the verified 2026 grid; v1.0.0 was the first public installer. |
 | [DASHBOARD.md](DASHBOARD.md) | Implementer's reference for `F1RaceSim_GSIFPEV2.djson` — every widget, binding, and the gotchas discovered while building it. |
+| [PICKER.md](PICKER.md) | User-facing UI reference for the Driver Picker — every panel, button, column, and colour, plus the per-driver input cluster added in v1.7.4–v1.7.6. |
+| [docs/wpf-broadcast-visuals.md](docs/wpf-broadcast-visuals.md) | Engineering reference for the input cluster — the WPF `IValueConverter` → frozen `PathGeometry` technique for value-driven arcs, the per-driver batch event pattern, INPC fan-out for computed properties, broadcast-layout conventions, and the v1.7.3 wrong-host lesson learned. Start here if you're extending the cluster (brake arc, ERS bar, DRS pip) or porting the pattern to another WPF tool. |
 | [docs/multiviewer-api.md](docs/multiviewer-api.md) | Why "MultiViewer is open" is not enough — the API-up vs Live-Timing-streaming distinction, the two-stage `Heartbeat`+`SessionInfo` probe the installer uses, a 5-step manual verification recipe, and a reference table of every endpoint the plugin polls. |
 | [SIGNING.md](SIGNING.md) | Code-signing options for the installer ranked by cost/UX. Includes the Microsoft Trusted Signing employee-credit path and the SFI workaround. |
 | [scripts/refresh-drivers.ps1](scripts/refresh-drivers.ps1) | Pulls the current season's `DriverList` from a running MultiViewer and rewrites `installer/Assets/drivers-fallback.json`. Run at the start of each season. |

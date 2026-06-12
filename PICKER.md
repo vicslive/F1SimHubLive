@@ -88,15 +88,45 @@ The scrollbar is dark-themed to match.
 
 | # | Column | Width | What it shows | Source |
 |---|---|---|---|---|
-| 0 | **Position** | 36 px | Driver's current race / qualifying position. Bold white. `—` when zero. | `TimingData.Lines[*].Position` |
-| 1 | **TLA tile** | 60 px | Three-letter abbreviation on a tile coloured with the constructor's official team colour (Ferrari red, Mercedes silver, etc.). | `DriverList.Tla` + `TeamColour` |
-| 2 | **Name + team** | flexible | Last name in bold + team name in subtler grey under it. | `DriverList.LastName` + `TeamName` |
-| 3 | **Speed** | 78 px | Current car speed in km/h, big bold Consolas number with a tiny `km/h` under it. Updates ~5×/sec for **every car** (not just the selected one). `0` when telemetry is paused / driver in pit. | MV `CarData` channel `2` for that car's racing number |
-| 4 | **LAST + BEST lap** | 95 px | Two-row stack. `LAST` row shows the most recent completed lap (or `IN PIT` when the driver is in the pit lane). `BEST` row shows the personal best lap of the session. Colour-coded — see [Time colour scheme](#time-colour-scheme) below. | `TimingData.Lines[*].LastLapTime` + `TimingStats.Lines[*].PersonalBestLapTime` |
-| 5 | **INT + LDR** | 80 px | Two-row stack. `INT` = gap to the car directly ahead. `LDR` = gap to the race leader (blank for P1, who *is* the leader; `1 L` for lapped cars). Both rendered with leading sign (`+x.xxx`). Column was labelled `GAP` and rendered empty in v1.2.0 – v1.3.1; v1.3.2 fixed both. | `TimingData.Lines[*].IntervalToPositionAhead.Value` + `GapToLeader` |
-| 6 | **Tyre badge** | 58 px | Coloured circle with a single letter (S/M/H/I/W) representing the current compound, and the lap number of the stint (`L18` = 18 laps on this set) under it. See [Tyre colour scheme](#tyre-colour-scheme). | `TimingAppData.Lines[*].Stints[<last>]` |
-| 7 | **Pit count** | 34 px | Number of pit stops completed. Hidden when zero. | `TimingData.NumberOfPitStops` (falls back to `Stints.Count - 1`) |
-| 8 | **Sector strip** | 200 px | Three sectors side-by-side. Each sector has **three rows** (top = segment mini-bars, middle = current lap's sector time, bottom = personal-best sector time). See [Sector strip](#sector-strip) below. | `TimingData.Lines[*].Sectors[]` + `TimingStats.Lines[*].BestSectors[]` |
+| 0 | **Position** | 26 px | Driver's current race / qualifying position. Black-bold white on a dark grey rounded tile. `—` when zero. | `TimingData.Lines[*].Position` |
+| 1 | **TLA tile** | 52 px | Three-letter abbreviation on a tile coloured with the constructor's official team colour (Ferrari red, Mercedes silver, etc.). | `DriverList.Tla` + `TeamColour` |
+| 2 | **Input cluster** | 50 px | Dark circular ring with the **current gear letter** centered (`N` / `R` / `1`–`8`), a **blue throttle arc** sweeping clockwise around the ring 0–100 %, and the **integer RPM** in white beneath. Broadcast-style — see [Per-driver input cluster](#per-driver-input-cluster) below. Added v1.7.4–v1.7.6. | MV `CarData` channels `0` (RPM), `3` (gear), `4` (throttle) for that car's racing number |
+| 3 | **Speed** | 72 px | Current car speed in km/h, big bold Consolas number with a tiny `km/h` under it. Updates ~5×/sec for **every car** (not just the selected one). `0` when telemetry is paused / driver in pit. | MV `CarData` channel `2` for that car's racing number |
+| 4 | **LAST + BEST lap** | 120 px | Two-row stack. `LAST` row shows the most recent completed lap (or `IN PIT` when the driver is in the pit lane). `BEST` row shows the personal best lap of the session. Colour-coded — see [Time colour scheme](#time-colour-scheme) below. | `TimingData.Lines[*].LastLapTime` + `TimingStats.Lines[*].PersonalBestLapTime` |
+| 5 | **INT + LDR** | 100 px | Two-row stack. `INT` = gap to the car directly ahead. `LDR` = gap to the race leader (blank for P1, who *is* the leader; `1 L` for lapped cars). Both rendered with leading sign (`+x.xxx`). | `TimingData.Lines[*].IntervalToPositionAhead.Value` + `GapToLeader` |
+| 6 | **Tyre badge** | 50 px | Coloured circle with a single letter (S/M/H/I/W) representing the current compound, and the lap number of the stint (`L18` = 18 laps on this set) under it. See [Tyre colour scheme](#tyre-colour-scheme). | `TimingAppData.Lines[*].Stints[<last>]` |
+| 7 | **Pit count** | 30 px | Number of pit stops completed. Hidden when zero. | `TimingData.NumberOfPitStops` (falls back to `Stints.Count - 1`) |
+| 8 | **Sector strip** | 260 px+ (star) | Three sectors side-by-side. Each sector has **three rows** (top = segment mini-bars, middle = current lap's sector time, bottom = personal-best sector time). See [Sector strip](#sector-strip) below. | `TimingData.Lines[*].Sectors[]` + `TimingStats.Lines[*].BestSectors[]` |
+
+> **History note:** the `Name + team` column that lived between TLA and Speed in v1.2.x–v1.7.3 was retired to free room for the v1.7.4 input cluster + widen the `LAST/BEST` and `INT/LDR` pill cells so MV's longer status pills (`IN PIT`, `1 L`) no longer truncate. Name + team is still in the underlying `DriverTimingRow` model and surfaces via the TLA tile's tooltip if you need it.
+
+### Per-driver input cluster
+
+Compact broadcast-style indicator added in v1.7.4 — v1.7.6, mounted between the TLA tile and the Speed column on **every** driver row.
+
+```
+   ╭──────╮
+   │ ╭──╮ │   ← thin blue arc sweeps clockwise around the gear ring
+   │ │ 6│ │      0 % throttle = no arc, 100 % = near-full ring (gap at bottom)
+   │ ╰──╯ │
+   ╰──────╯
+    10952     ← integer RPM, white Consolas Bold FS=12, centered
+```
+
+| Layer | Element | Source / formula |
+|---|---|---|
+| Bottom | **Background ring** — `Ellipse`, 34 × 34 px, `Fill="#0F0F14"`, `Stroke="#3A3A44"` 2 px | Static; one per row |
+| Middle | **Throttle arc** — `Path` with one `ArcSegment`, blue `#3399FF`, 3 px stroke, round caps | `Throttle / 100 × 260°` clockwise sweep starting at ~8 o'clock (`StartAngleDegrees=140`). Below 0.5 % throttle the arc renders empty so 0 % shows as a clean dark ring. |
+| Top overlay | **Gear letter** — `TextBlock`, Consolas Black FS=18 white, centered | `Gear == 0 → "N"`, `Gear < 0 → "R"`, otherwise the digit. |
+| Below | **RPM** — `TextBlock`, Consolas Bold FS=12 white, centered | `Math.Round(Rpm)` as integer; blank string when RPM is 0 so unloaded rows don't render a noisy `0`. |
+
+**Update rate:** every ~200 ms for every visible row (the picker polls MV CarData on a fixed 200 ms loop). Per-row cost is essentially zero — the parser was already walking `Cars.*.Channels` for the existing per-row speed update; gear / throttle / RPM are now extracted in the same single pass.
+
+**Why broadcast layout?** Mirrors the small cluster F1 Live Timing renders to the left of each driver row on its own broadcast UI — same arc direction, same gap at the bottom, same gear-letter-in-circle convention. Familiar at-a-glance read for anyone who watches F1 sessions.
+
+**Where the focused-driver duplicate lives:** the **picker header** (next to the RPM digit readout and LED preview strip) shows the same data for the *currently-selected* driver — vertical green throttle bar + big gear letter — so you can see your own driver's inputs at a glance while the row clusters show the field.
+
+**Under the hood** — see [docs/wpf-broadcast-visuals.md](docs/wpf-broadcast-visuals.md) for the WPF arc-geometry technique, the `IValueConverter` math, and the broadcast-layout conventions that drive these choices. That doc is the "how to build this kind of thing" reference for anyone extending the picker (or porting the pattern to another WPF tool).
 
 ### Time colour scheme
 
@@ -205,7 +235,7 @@ The picker hits MultiViewer's local REST API at `http://localhost:10101`. All en
 | `/api/v1/live-timing/TimingData` | every 500 ms | Position, current sector times, lap times, pit status, gap, interval, segments |
 | `/api/v1/live-timing/TimingAppData` | every 500 ms | Stints / tyre compound / stint age / pit count |
 | `/api/v1/live-timing/TimingStats` | every 500 ms | **Authoritative** personal-best lap + best-sector times with Position ranking (this is what makes PB / SB colours stay correct even when joining mid-session) |
-| `/api/v2/livetiming/cardata/<lap>` (or live equivalent) | every 200 ms | Per-driver RPM (channel `0`) + per-driver speed (channel `2`) |
+| `/api/v2/livetiming/cardata/<lap>` (or live equivalent) | every 200 ms | Per-driver telemetry channels — `0` = RPM, `2` = speed (km/h), `3` = gear (int, `0`=N, `-1`=R, `1`–`8`), `4` = throttle (%). Channels `0` / `2` / `3` / `4` are all harvested per car in a single pass to feed the row's input cluster + speed cell (v1.7.4+). |
 
 If MV is closed or any endpoint 404s, the picker logs the failure to the status line and keeps retrying. `TimingStats` failures are silently tolerated — older MV builds without that endpoint fall back to a client-side running-min PB tracker (less accurate for mid-session joins, but functional).
 
@@ -262,6 +292,9 @@ The picker doesn't have its own settings file. Behaviour is controlled by two fi
 | **v1.3.0** | Picker manifest changed from `requireAdministrator` to `asInvoker` — **no UAC prompt on launch, ever.** Settings file moved from `C:\Program Files (x86)\SimHub\F1SimHubLive.Settings.json` to `%APPDATA%\F1SimHubLive\F1SimHubLive.Settings.json`; automatic one-shot migration from the legacy path on first run. `AutoLaunchPicker = true` is now fully unattended. |
 | **v1.3.1** | Picker now refreshes driver team info (TLA, last name, team name, team colour) when MultiViewer switches sessions while the picker is running. Previously those four fields on `DriverTimingRow` were declared `{ get; init; }` (C# init-only), so once a row was created the team paint was locked in — most visible when loading a historical-season replay in MV after the picker was already open: drivers who exist in both eras (Hamilton, Verstappen) kept their first-poll team while era-unique drivers (Räikkönen, Bortoleto) painted correctly. Converted those four fields to mutable INPC properties with a refresh pass in the row-exists branch of `ApplySnapshot`. |
 | **v1.3.2** | Picker `INT` and `LDR` columns now show real values. The poll loop was reading `line["TimeDiffToFastest"]` and `line["TimeDiffToPositionAhead"]` — those names don't exist on MultiViewer's public `/api/v1/live-timing/TimingData` payload (they're signalr-internal). Both reads returned `null` → empty strings → the columns rendered as bare labels. Fixed to use the actual payload: `GapToLeader` (top-level string) and `IntervalToPositionAhead.Value` (nested object). Also renamed the second column from `GAP` to `LDR` to match MultiViewer's terminology. |
+| **v1.7.4** | **Per-driver input cluster** introduced — circular gear ring + RPM digit, mounted as a new 50 px column between the TLA tile and Speed on every row. Header gains a focused-driver cluster too (vertical green throttle bar + big gear letter) next to the existing RPM digit + LED preview. Telemetry plumbed via a new `OnInputsBatch` event on `PickerTelemetryClient` that walks MV `Cars.*.Channels` in a single pass and surfaces `(Gear, Throttle, Rpm)` per racing number. To make room without widening the window, the legacy `Name + team` column was retired (still accessible via TLA tooltip). |
+| **v1.7.5** | **Blue throttle arc** wrapped around the per-row gear ring — sweeps clockwise 0–260° as throttle goes 0–100 %, gap at the bottom, matching the F1 Live Timing broadcast layout. Implemented as a one-way `IValueConverter` (`ThrottleToArcGeometryConverter`) that builds a frozen `PathGeometry` with a single `ArcSegment` per throttle reading. Below 0.5 % throttle the arc renders empty so 0 % shows as a clean dark ring instead of a stray dot artefact. Path is marked `IsHitTestVisible="False"` so it doesn't swallow row-click events. See [docs/wpf-broadcast-visuals.md](docs/wpf-broadcast-visuals.md) for the geometry math. |
+| **v1.7.6** | RPM legibility tweak — per-row RPM digit changed from red `#FF4040` SemiBold FS=10 to white `#E8E8EE` Bold FS=12. Red-on-dark was hard to read at small sizes against the dark grey row background; white at FS=12 reads at a glance without crowding the 50 px cluster column. No layout shift — the existing stack panel absorbs the 2 px font bump. |
 
 ---
 

@@ -239,6 +239,45 @@ return '#FFAAAAAA';
 
 ---
 
+## Input cluster (mid-bottom)
+
+Compact broadcast-style gauge that combines **throttle %**, **current gear**, and **RPM** in one cluster — the F1 Live Timing top-bar pattern, rendered on the wheel LCD. Added in v1.7.3.
+
+Three widgets stacked at `L=350 T=345`, all under the top-level `InputCluster` Layer:
+
+| Widget | Type | Bound to | Notes |
+|---|---|---|---|
+| `InputThrottleGauge` | `CircularGaugeItem` (70×70) | `F1SimHubLivePlugin.Throttle` (0–100) | Bright green `#FF00CC44` arc on dark grey `#FF2A2A2A` ring. Stroke 6px. Arc sweep `MinAngle=135` → `MaxAngle=405` (270° span, gap at the bottom — broadcast convention so RPM digits read clean below the ring). |
+| `InputGearMini` | `TextItem` (70×70 overlay) | `F1SimHubLivePlugin.Gear` | Oswald Bold FS=28 white, centered (HA=1 VA=1). Formula: `g===0 → 'N'`, `g===-1 → 'R'`, else `g.toString()`. |
+| `InputRpmMini` | `TextItem` (80×16, below ring) | `Math.round(F1SimHubLivePlugin.Rpm)` | Oswald FS=12 white, centered. Integer RPM only. |
+
+**`InputThrottleGauge` Bindings.Value** (JS expression, Interpreter=1):
+```js
+return $prop('F1SimHubLivePlugin.Throttle');
+```
+
+**`InputGearMini` Bindings.Text** (JS expression, Interpreter=1):
+```js
+var g = $prop('F1SimHubLivePlugin.Gear');
+if (g === 0 || g === '0') return 'N';
+if (g === -1 || g === '-1' || g < 0) return 'R';
+return g.toString();
+```
+
+**`InputRpmMini` Bindings.Text** (JS expression, Interpreter=1):
+```js
+var r = $prop('F1SimHubLivePlugin.Rpm');
+return (r != null) ? Math.round(r).toString() : '';
+```
+
+**Placement rationale:** the strip at `T=343–420, L=300–440` was empty in v1.7.2 — bracketed by the Leader sector row above (`B=309`), the Behind-driver cluster on the left (`R=284`), the Signature widgets on the right (`L=442`), and the bottom info-pill strip below (`T=420`). The cluster fits without moving or resizing any existing widget.
+
+**Why no `CircularGaugeBackgroundColor` on the unfilled portion?** It's set to `#FF2A2A2A` — a dark grey that reads as a contained ring rather than a transparent arc-on-nothing. Matches the broadcast feel where the gauge always looks "present" even when throttle is 0%.
+
+**Tweaking placement:** if the cluster lands awkwardly on Vic's GSI Formula Pro Elite V2, drag the group in Dash Studio. All three child widgets share `Name = 'InputCluster'` as the parent Layer — moving the parent moves the cluster as one. The widget IDs `InputThrottleGauge` / `InputGearMini` / `InputRpmMini` are the load-bearing names — preserve them across edits so future docs and CHANGELOG references remain accurate.
+
+---
+
 ## Color palette (broadcast standard)
 
 | State | Hex | Where used |

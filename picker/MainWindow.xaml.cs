@@ -250,6 +250,8 @@ public partial class MainWindow : Window
         _sliderWriteTimer = new DispatcherTimer { Interval = SliderWriteDelay };
         _sliderWriteTimer.Tick += SliderWriteTimer_Tick;
 
+        InitReplay();
+
         // Wire the live-timing client and bind its rows to the ItemsControl.
         // Rows is an ObservableCollection that LiveTimingClient mutates in
         // place on the UI thread (via Dispatcher), so we set ItemsSource

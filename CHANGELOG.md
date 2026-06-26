@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.8.0] — 2026-06-26
+
+### Added
+- **Third telemetry source: `F1Replay` — on-demand replay straight from F1's public archive, no MultiViewer and no F1 TV subscription for the data.** Alongside `F1Live` (direct SignalR) and `MultiViewer` (local API), the plugin can now play back any past session (race, qualifying, practice, sprint) by reading F1's live-timing static archive at `livetiming.formula1.com/static/`. Same decoders, same dashboard, same SimHub properties — only the source of the bytes changes. This is the same recorded feed FastF1 and the community tooling read; it carries **data only** (no video — the 4K picture stays with Apple TV / MultiViewer, which is the right place for the DRM stream).
+  - New `F1Replay/` engine: `ArchiveClient` (HTTP + BOM strip + `BestHTTP` UA), `JsonStreamParser` (`.jsonStream` → timestamped events), `ReplayTimeline` (parallel topic download, merged sorted timeline, lap→offset seek index, deep-merged DriverList for team colours), `F1ReplayClient` (`ITelemetrySource` + transport: play/pause/speed/seek/seek-to-lap, clamped to 16×). Snapshots are re-stamped `Utc=UtcNow` at emit so the interpolator's timing contract holds.
+  - Plugin wiring: file-based command channel `F1SimHubLive.ReplayCommand.json` (picker→plugin, monotonic `Seq`) and status channel `F1SimHubLive.ReplayStatus.json` (plugin→picker, ~3 Hz). Runtime source swap (`EnterReplay` / `ExitReplayToLive`) flips between live and replay without restarting SimHub. New `ReplaySessionPath` setting + `ReplayActive/Playing/Speed/PositionSec/DurationSec/SessionName` props.
+- **Picker — on-demand Replay panel** (new `⏯ Replay` toggle in the header). Browse the archive by **year → session** (dropdowns from `Index.json`, current season back to 2018, newest first), **Load** / **● Go Live**, and a full transport row: play/pause, **0.5× / 1× / 2× / 4×** speed, a live scrubber, and `MM:SS / H:MM:SS` position. Per-session anchor (last position + speed) is persisted to `F1SimHubLive.ReplayPrefs.json` so reloading a session resumes where you left it. New services: `ArchiveIndexClient`, `ReplayControlClient`, `Models/ArchiveModels.cs`.
+- **Video-sync controls (MultiViewer-free viewing).** Because the video and data are now two independent players, sync is explicit:
+  - **Replay:** anchor once to the on-screen **lap** (type it → jump there) then fine-nudge **◀ −0.5 s / +0.5 s ▶**. Both run at 1× afterwards, so they stay aligned (quartz drift over a race is sub-second) — re-anchor only if you seek the video.
+  - **Live:** a **"Live video delay (Apple TV)"** slider (0–30 s) holds the near-live data back to match a delayed broadcast feed.
+
+### Changed
+- **`TelemetryBuffer`** now keeps a short, time-trimmed snapshot history (`RetentionMs`) and exposes `PairAt(target)` so the interpolator can render delayed playback. The classic `prev`/`curr` fast path is unchanged and is still used whenever the broadcast delay is 0 (today's default behaviour, byte-for-byte).
+- **`Interpolator`** gains a runtime-settable `BroadcastDelayMs`; when >0 it renders against `UtcNow − (renderDelay + broadcastDelay)` via `PairAt`. New `Settings.BroadcastDelayMs` (default `0`) is hot-reloaded — the plugin re-applies it to the live interpolator within ~250 ms of the picker writing it, and forces it to 0 while the replay source is active.
+
 ## [1.7.6] — 2026-06-12
 
 ### Changed

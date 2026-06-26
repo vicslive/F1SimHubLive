@@ -12,7 +12,28 @@ namespace F1SimHubLive
         public int OutputHz { get; set; } = 60;
         public int RenderDelayMs { get; set; } = 200;
 
+        /// <summary>
+        /// Extra latency (milliseconds) the LIVE telemetry is held back before it
+        /// reaches the wheel/dash, so the data lines up with a delayed broadcast
+        /// you're watching on a separate screen (e.g. Apple TV / F1 TV 4K, which
+        /// runs several seconds behind the live timing feed). 0 (default) =
+        /// today's behaviour, no extra hold. Only applied to the live sources
+        /// (<c>F1Live</c> / <c>MultiViewer</c>); the <c>F1Replay</c> source ignores
+        /// it because replay is anchored to the video manually. The picker exposes
+        /// this as the "Live video delay" slider and hot-reloads it.
+        /// </summary>
+        public int BroadcastDelayMs { get; set; } = 0;
+
         public string Source { get; set; } = "F1Live";
+
+        /// <summary>
+        /// Static-archive session path for the <c>F1Replay</c> source, e.g.
+        /// <c>2024/2024-09-01_Italian_Grand_Prix/2024-09-01_Race/</c>. Set by the
+        /// picker's archive browser (written to the shared settings file) and read
+        /// by <c>CreateClient</c> / <c>EnterReplay</c> when <c>Source</c> is
+        /// <c>F1Replay</c>. Empty until a session is chosen.
+        /// </summary>
+        public string ReplaySessionPath { get; set; } = "";
 
         /// <summary>
         /// RPM at which <c>RpmShiftPercent</c> reads 0%. Calibrated to real F1

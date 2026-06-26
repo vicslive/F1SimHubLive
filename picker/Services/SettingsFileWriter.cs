@@ -157,6 +157,37 @@ internal static class SettingsFileWriter
         WriteField(settingsPath, obj => obj["AutoLaunchPicker"] = value);
     }
 
+    /// <summary>
+    /// Reads <c>BroadcastDelayMs</c> (the live-video-sync hold) from the
+    /// settings file. Returns 0 (the plugin default — no extra delay) when the
+    /// file is missing, malformed, or the field is unset.
+    /// </summary>
+    public static int ReadBroadcastDelayMs(string settingsPath)
+    {
+        try
+        {
+            if (!File.Exists(settingsPath)) return 0;
+            using var doc = JsonDocument.Parse(File.ReadAllText(settingsPath));
+            return ReadInt(doc.RootElement, "BroadcastDelayMs", 0);
+        }
+        catch
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>
+    /// Writes <c>BroadcastDelayMs</c> to the settings file, atomically. The
+    /// plugin hot-reloads it via FileSystemWatcher and re-applies the delay to
+    /// the live interpolator within ~250 ms, so the wheel/dash data shifts to
+    /// match a delayed video feed without a SimHub restart.
+    /// </summary>
+    public static void WriteBroadcastDelayMs(string settingsPath, int ms)
+    {
+        ms = Math.Clamp(ms, 0, 60_000);
+        WriteField(settingsPath, obj => obj["BroadcastDelayMs"] = ms);
+    }
+
     private static void WriteField(string settingsPath, Action<JsonObject> mutate)
     {
         JsonNode root;

@@ -46,6 +46,61 @@ The header is the always-visible strip at the top, dark-themed to match Windows 
 
 **Why it's there:** the LED bar is a sanity check. If the picker shows LEDs lighting up but your wheel doesn't, the gap is between SimHub and the wheel (not between MV and SimHub). Conversely, if both are dark, look upstream — MV not connected, or no session loaded.
 
+The header also carries the **`⏯ Replay`** toggle (v1.8.0) which opens the on-demand Replay panel described next.
+
+---
+
+## Replay panel (on-demand, no MultiViewer) — v1.8.0
+
+Click **`⏯ Replay`** in the header to open the Replay panel. It drives the
+plugin's `F1Replay` source: playback of **any past F1 session** straight from
+F1's public archive — **no MultiViewer and no F1 TV subscription for the data**.
+DATA only; the video stays on your own player (Apple TV / F1 TV / MultiViewer).
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ON-DEMAND REPLAY · direct from F1 (no MultiViewer)            Lap 14/53 · 1×  │
+│ [2026 ▾] [ Austrian Grand Prix — Practice 1            ▾]  [⟳] [Load] [● Go Live]│
+│ [▶] [0.5×][1×][2×][4×]  ───────●───────────────  37:12 / 1:01:40              │
+│ Sync to video — Lap [14] [Go]   [◀ −0.5s] [+0.5s ▶]   anchor once, run at 1×  │
+│ Live video delay (Apple TV)  ──●─────────────────────────────────────   0 s   │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Control | What it does |
+|---|---|
+| **Year dropdown** | Season to browse. Defaults to the current year, back to 2018 (first season in F1's static archive). |
+| **Session dropdown** | Every meeting + session for that year (Race, Qualifying, Practice 1–3, Sprint…), newest first, loaded from `Index.json`. |
+| **`⟳`** | Reload the session list (e.g. a just-completed session appeared). |
+| **`Load`** | Start replaying the selected session. The plugin switches to the `F1Replay` source live — no SimHub restart. |
+| **`● Go Live`** | Exit replay and return to the live source (`F1Live`). |
+| **`▶ / ⏸`** | Play / pause. |
+| **`0.5× / 1× / 2× / 4×`** | Playback speed (engine allows up to 16×; the buttons cover the useful range). |
+| **Scrubber** | Drag or click to seek anywhere in the session. |
+| **Position** | `elapsed / total` as `MM:SS` / `H:MM:SS`. |
+
+### Keeping the data in sync with your video
+
+The video is a separate player the picker can't see, so you align it once:
+
+1. Read the **lap number** on your F1 TV / Apple TV picture, type it into
+   **Sync to video — Lap**, press **Go** (or Enter). The data jumps to that lap.
+2. Fine-tune with **◀ −0.5 s** / **+0.5 s ▶** until the on-screen speed/gear
+   matches the dash.
+
+After that both run at 1× and stay aligned — re-anchor only if you seek the
+video. The anchor (last position + speed) is remembered per session in
+`F1SimHubLive.ReplayPrefs.json`, so reloading resumes where you left off.
+
+**Live video delay (Apple TV)** is for the *live* case instead: when you watch
+the live session on a delayed feed, slide it (0–30 s) until the near-live data
+lines up with the picture. It writes `BroadcastDelayMs` and hot-reloads.
+
+> **How it talks to the plugin:** the panel writes `F1SimHubLive.ReplayCommand.json`
+> (monotonic `Seq`) and reads `F1SimHubLive.ReplayStatus.json` back for the live
+> scrubber/state — both next to `F1SimHubLive.Settings.json` under
+> `%APPDATA%\F1SimHubLive\`, same atomic write pattern as the driver swap.
+
 ---
 
 ## Status line (under the header, conditional)

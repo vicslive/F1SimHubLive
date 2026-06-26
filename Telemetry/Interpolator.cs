@@ -12,6 +12,15 @@ namespace F1SimHubLive.Telemetry
 
         public DriverSnapshot? Latest { get; private set; }
 
+        /// <summary>
+        /// Extra hold (ms) applied on top of <see cref="_renderDelayMs"/> so the
+        /// rendered data lags a delayed video feed. 0 = no extra delay (the
+        /// classic prev/curr fast path). Settable at runtime (the plugin updates
+        /// it from settings hot-reload and zeroes it while in replay). Plain int
+        /// read/write is atomic on the CLR, so no lock is needed for the flag.
+        /// </summary>
+        public int BroadcastDelayMs { get; set; }
+
         public Interpolator(TelemetryBuffer buffer, int hz, int renderDelayMs)
         {
             _buffer = buffer;
@@ -27,7 +36,10 @@ namespace F1SimHubLive.Telemetry
 
         private void Tick()
         {
-            var (prev, curr) = _buffer.Snapshot();
+            int broadcast = BroadcastDelayMs;
+            var (prev, curr) = broadcast > 0
+                ? _buffer.PairAt(DateTime.UtcNow.AddMilliseconds(-(_renderDelayMs + broadcast)))
+                : _buffer.Snapshot();
             if (curr == null) return;
             if (prev == null)
             {
@@ -37,7 +49,9 @@ namespace F1SimHubLive.Telemetry
 
             // Render slightly in the past so prev/curr usually bracket our render time.
             // At 4 Hz samples (~250 ms apart), a 200 ms render delay keeps us inside the window.
-            DateTime renderTime = DateTime.UtcNow.AddMilliseconds(-_renderDelayMs);
+            // A configured broadcast delay extends that lag so the data lines up with a
+            // delayed video feed (e.g. F1 TV 4K on Apple TV).
+            DateTime renderTime = DateTime.UtcNow.AddMilliseconds(-(_renderDelayMs + broadcast));
             double dtMs = (curr.Utc - prev.Utc).TotalMilliseconds;
             if (dtMs <= 0)
             {

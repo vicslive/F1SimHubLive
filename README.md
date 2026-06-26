@@ -38,20 +38,21 @@ F1 TV broadcast (~1–3s behind live)
 2. [Fresh-machine setup (first-time GSI wheel)](#fresh-machine-setup-first-time-gsi-wheel)
 3. [What it does](#what-it-does)
 4. [Architecture](#architecture)
-5. [Two data sources: F1 Live vs MultiViewer](#two-data-sources-f1-live-vs-multiviewer)
-6. [SimHub property reference](#simhub-property-reference)
-7. [F1RaceSim_GSIFPEV2 dashboard](#F1RaceSim_GSIFPEV2-dashboard)
-8. [Driver Picker (mid-race driver switching)](#driver-picker-mid-race-driver-switching)
-9. [Build the plugin](#build-the-plugin)
-10. [Install (manual)](#install-manual)
-11. [Configure](#configure)
-12. [Run a session](#run-a-session)
-13. [Troubleshooting](#troubleshooting)
-14. [File layout](#file-layout)
-15. [Known limitations](#known-limitations)
-16. [License](#license)
-17. [Companion docs](#companion-docs)
-18. [Contributing](#contributing)
+5. [Three data sources: F1 Live, MultiViewer, F1 Replay](#three-data-sources-f1-live-multiviewer-f1-replay)
+6. [Keeping data in sync with the video](#keeping-data-in-sync-with-the-video)
+7. [SimHub property reference](#simhub-property-reference)
+8. [F1RaceSim_GSIFPEV2 dashboard](#F1RaceSim_GSIFPEV2-dashboard)
+9. [Driver Picker (mid-race driver switching)](#driver-picker-mid-race-driver-switching)
+10. [Build the plugin](#build-the-plugin)
+11. [Install (manual)](#install-manual)
+12. [Configure](#configure)
+13. [Run a session](#run-a-session)
+14. [Troubleshooting](#troubleshooting)
+15. [File layout](#file-layout)
+16. [Known limitations](#known-limitations)
+17. [License](#license)
+18. [Companion docs](#companion-docs)
+19. [Contributing](#contributing)
 
 ---
 
@@ -214,6 +215,7 @@ In **Device Manager**, the wheel should appear under *Human Interface Devices* w
 │ Data source (one of)                                             │
 │  • F1SignalRClient  → wss://livetiming.formula1.com (broadcast)  │
 │  • MultiViewerHttpClient → http://localhost:10101 (replay)       │
+│  • F1ReplayClient → livetiming.formula1.com/static (on-demand)   │
 └─────────────────────────────────────────────────────────────────┘
                         │ raw SignalR/JSON
                         ▼
@@ -255,18 +257,59 @@ In **Device Manager**, the wheel should appear under *Human Interface Devices* w
 
 ---
 
-## Two data sources: F1 Live vs MultiViewer
+## Three data sources: F1 Live, MultiViewer, F1 Replay
 
-Set `Source` in `F1SimHubLive.Settings.json`:
+Set `Source` in `F1SimHubLive.Settings.json` (the Driver Picker can also switch
+between live and replay at runtime, no restart):
 
 | Value | What it connects to | When to use |
 |---|---|---|
 | `F1Live` (default) | `livetiming.formula1.com` SignalR 2.x hub `Streaming` | Live sessions only (FP1/2/3, Q, Sprint, Race). Data flows only while F1 is actively broadcasting. |
 | `MultiViewer` | Local F1 MultiViewer app at `http://localhost:10101` | Replays from F1 TV recordings, paused sessions, or testing outside live windows. Requires MultiViewer running with a session loaded **and Live Timing actively running** — for replays, click "Replay Live Timing" on the session. Watching only the video feed produces no telemetry. |
+| `F1Replay` | F1's public static archive at `livetiming.formula1.com/static/` | On-demand playback of **any past session** with **no MultiViewer and no F1 TV subscription for the data**. Pick a session in the Driver Picker's Replay panel and drive it with full transport (play/pause, speed, seek, seek-to-lap). |
 
-The F1Live source has zero local dependencies. MultiViewer mode lets you scrub through past races for testing — used heavily during development to validate the dashboard against known SC/VSC/yellow events.
+The F1Live and F1Replay sources have zero local dependencies — neither needs
+MultiViewer. MultiViewer mode is still the simplest way to drive data that is
+already in sync with MultiViewer's own video player.
+
+### Data vs. video — two different F1 backends
+
+F1 exposes two separate systems and F1SimHubLive only ever touches the first:
+
+- **`livetiming.formula1.com`** — the public live-timing **data** feed/archive
+  (timing, telemetry, weather, track status). No DRM, no login. This is what all
+  three sources read.
+- **`f1tv.formula1.com`** — the Widevine-DRM **video** stream. F1SimHubLive never
+  touches this; the 4K picture is owned by your Apple TV / F1 TV / MultiViewer
+  player. We only own the data + dashboard layer.
+
+Because the video and data are then two independent players, syncing them is
+explicit — see [keeping data in sync with the video](#keeping-data-in-sync-with-the-video).
 
 ---
+
+## Keeping data in sync with the video
+
+With `MultiViewer` mode the data and the picture share one player, so they're
+synced automatically. With `F1Live`/`F1Replay` the picture is on a **separate**
+player (Apple TV, F1 TV, MultiViewer's video) that F1SimHubLive can't see — so
+you align them yourself. It's a one-time action, not a constant fight, because
+both players run at real 1× and barely drift over a whole session.
+
+**Replay (watching a past session):** in the Picker's Replay panel, read the
+on-screen **lap** on the video and type it into the *Sync to video — Lap* box →
+the data jumps to that lap. Then fine-tune with **◀ −0.5 s / +0.5 s ▶** until the
+on-screen speed/gear matches the dash. Done — they stay aligned. Re-anchor only
+if you seek the video. The anchor (last position + speed) is remembered per
+session, so reloading resumes where you were.
+
+**Live (watching the live session on a delayed feed):** the broadcast video runs
+several seconds behind the live-timing data. Slide **Live video delay (Apple TV)**
+(0–30 s) until the data lines up with the picture. That value persists and
+hot-reloads.
+
+*(A future option: if you ever watch F1 TV on the same PC, OCR of the on-screen
+lap/clock could auto-sync the data — not needed for a separate Apple TV box.)*
 
 ## SimHub property reference
 
@@ -644,13 +687,15 @@ powershell -ExecutionPolicy Bypass -File scripts\deploy.ps1 -StartSimHub   # dep
 | `RpmShiftLightStartRpm` | `3500` | RPM at which `RpmShiftPercent` reads 0%. Lower this to make greens light earlier during pit lane / out-laps. Hot-reloads. |
 | `RpmShiftLightEndRpm` | `13000` | RPM at which `RpmShiftPercent` reads 100% (full bar). Raise this if your team's PU peaks higher and you want headroom; lower it for an even more reactive bar. Hot-reloads. |
 | `RenderDelayMs` | `200` | Render lag. Holds 200ms of buffer so the interpolator always has `prev` + `curr` snapshots to interpolate between. Lower = less added latency but more "hold" between samples. |
-| `Source` | `"F1Live"` | `F1Live` (broadcast SignalR) or `MultiViewer` (local replay). |
+| `BroadcastDelayMs` | `0` | Extra hold (ms) applied to the **live** sources so the data lines up with a delayed video feed you're watching elsewhere (e.g. Apple TV / F1 TV 4K, several seconds behind live timing). `0` = today's behaviour. Ignored by `F1Replay`. **Hot-reloadable** — the Picker's "Live video delay" slider writes it and the plugin re-applies it within ~250 ms. |
+| `Source` | `"F1Live"` | `F1Live` (broadcast SignalR), `MultiViewer` (local replay), or `F1Replay` (on-demand from F1's static archive). The Driver Picker can flip live↔replay at runtime. |
+| `ReplaySessionPath` | `""` | Archive session path for `F1Replay`, e.g. `2026/2026-06-28_Austrian_Grand_Prix/2026-06-27_Practice_1/`. Normally set for you by the Picker's Replay browser. |
 | `MultiViewerBaseUrl` | `http://localhost:10101` | F1 MultiViewer HTTP API root. Only used when `Source=MultiViewer`. |
 | `MultiViewerPollMs` | `250` | Car-data polling interval against MultiViewer (4 Hz default). |
 | `MultiViewerTimingPollMs` | `1000` | Timing/session/weather polling interval against MultiViewer (1 Hz default). |
 | `AutoLaunchPicker` | `false` | When `true`, plugin spawns the [Driver Picker](#driver-picker-mid-race-driver-switching--live-timing) every time SimHub starts. As of v1.3.0 this is fully unattended — the picker runs as `asInvoker` (no UAC) and writes config under `%APPDATA%\F1SimHubLive\`. Safe to leave on permanently. |
 
-Hot-reloadable keys: **`DriverNumber` only.** All other keys still require a SimHub restart — changing URLs or polling intervals mid-session would require tearing down and re-establishing the client connection, and was intentionally left out of scope.
+Hot-reloadable keys: **`DriverNumber` and `BroadcastDelayMs`.** All other keys still require a SimHub restart — changing URLs or polling intervals mid-session would require tearing down and re-establishing the client connection, and was intentionally left out of scope. (Note: `Source` / `ReplaySessionPath` change at runtime too, but via the Picker's replay command channel rather than a settings-file edit.)
 
 ---
 

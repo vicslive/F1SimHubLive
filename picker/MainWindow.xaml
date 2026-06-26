@@ -27,6 +27,56 @@
         <svc:CountToGridStarConverter x:Key="CountToGridStar" />
         <svc:ThrottleToArcGeometryConverter x:Key="ThrottleToArc" />
 
+        <!-- Compact transport button used by the on-demand Replay panel. -->
+        <Style x:Key="ReplayButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#1A1A20" />
+            <Setter Property="BorderBrush" Value="#2A2A33" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#E8E8EC" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#23232C" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2E2E3A" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#55555F" />
+                                <Setter TargetName="Bd" Property="Background" Value="#141419" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Dark ComboBox for the archive browser dropdowns. -->
+        <Style x:Key="ReplayComboStyle" TargetType="ComboBox">
+            <Setter Property="Background" Value="#1A1A20" />
+            <Setter Property="Foreground" Value="#E8E8EC" />
+            <Setter Property="BorderBrush" Value="#2A2A33" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Height" Value="26" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Padding" Value="6,0" />
+        </Style>
+
         <Style x:Key="DriverButtonStyle" TargetType="Button">
             <Setter Property="Background" Value="#1A1A20" />
             <Setter Property="BorderBrush" Value="#2A2A33" />
@@ -241,6 +291,18 @@
                               ToolTip="Show shift-light range sliders"
                               Checked="LedToggle_Changed"
                               Unchecked="LedToggle_Changed" />
+                <ToggleButton x:Name="ReplayToggle"
+                              Content="⏯ Replay"
+                              Foreground="#C8C8D0"
+                              Background="Transparent"
+                              BorderBrush="#2A2A33"
+                              BorderThickness="1"
+                              Padding="6,2"
+                              Margin="0,0,8,0"
+                              Cursor="Hand"
+                              ToolTip="Show the on-demand Replay panel (browse past sessions, no MultiViewer)"
+                              Checked="ReplayToggle_Changed"
+                              Unchecked="ReplayToggle_Changed" />
                 <CheckBox x:Name="AutoLaunchCheck"
                           Content="🚀 Auto-launch" IsChecked="False"
                           Foreground="#C8C8D0"
@@ -265,6 +327,159 @@
                        Text="Connecting to MultiViewer…"
                        FontSize="11" Foreground="#9090A0"
                        TextTrimming="CharacterEllipsis" />
+        </Border>
+
+        <!-- On-demand Replay panel — browse F1's static archive and drive the
+             plugin's F1Replay source (no MultiViewer, no F1 TV sub for data).
+             Hidden until the user expands it via the Replay toggle. -->
+        <Border x:Name="ReplayPanel"
+                DockPanel.Dock="Top" Background="#0A0A0E"
+                CornerRadius="6" Padding="10,8" Margin="0,0,0,8"
+                BorderBrush="#1F1F26" BorderThickness="1"
+                Visibility="Collapsed">
+            <StackPanel>
+                <!-- Title + collapse -->
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="ON-DEMAND REPLAY · direct from F1 (no MultiViewer)"
+                               FontSize="10" FontWeight="SemiBold" Foreground="#7F7F8A"
+                               VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" x:Name="ReplayStateText"
+                               Text="idle" FontSize="10" Foreground="#9898A4"
+                               VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- Row 1: archive browser -->
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="70" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox Grid.Column="0" x:Name="ReplayYearCombo"
+                              Style="{StaticResource ReplayComboStyle}"
+                              SelectionChanged="ReplayYearCombo_SelectionChanged" />
+                    <ComboBox Grid.Column="1" x:Name="ReplaySessionCombo"
+                              Style="{StaticResource ReplayComboStyle}"
+                              Margin="6,0" />
+                    <Button Grid.Column="2" x:Name="ReplayRefreshButton"
+                            Style="{StaticResource ReplayButtonStyle}"
+                            Content="⟳" ToolTip="Reload session list"
+                            Click="ReplayRefreshButton_Click" />
+                    <Button Grid.Column="3" x:Name="ReplayLoadButton"
+                            Style="{StaticResource ReplayButtonStyle}"
+                            Content="Load" Margin="6,0,0,0"
+                            Click="ReplayLoadButton_Click" />
+                    <Button Grid.Column="4" x:Name="ReplayGoLiveButton"
+                            Style="{StaticResource ReplayButtonStyle}"
+                            Content="● Go Live" Margin="6,0,0,0"
+                            ToolTip="Exit replay and return to the live source"
+                            Click="ReplayGoLiveButton_Click" />
+                </Grid>
+
+                <!-- Row 2: transport -->
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Button Grid.Column="0" x:Name="ReplayPlayPauseButton"
+                            Style="{StaticResource ReplayButtonStyle}"
+                            Content="▶" Width="40"
+                            Click="ReplayPlayPauseButton_Click" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
+                        <Button x:Name="ReplaySpeed05" Style="{StaticResource ReplayButtonStyle}"
+                                Content="0.5×" Tag="0.5" Margin="0,0,3,0" Click="ReplaySpeed_Click" />
+                        <Button x:Name="ReplaySpeed1" Style="{StaticResource ReplayButtonStyle}"
+                                Content="1×" Tag="1" Margin="0,0,3,0" Click="ReplaySpeed_Click" />
+                        <Button x:Name="ReplaySpeed2" Style="{StaticResource ReplayButtonStyle}"
+                                Content="2×" Tag="2" Margin="0,0,3,0" Click="ReplaySpeed_Click" />
+                        <Button x:Name="ReplaySpeed4" Style="{StaticResource ReplayButtonStyle}"
+                                Content="4×" Tag="4" Click="ReplaySpeed_Click" />
+                    </StackPanel>
+                    <Slider Grid.Column="2" x:Name="ReplayScrubber"
+                            Minimum="0" Maximum="1" Value="0"
+                            VerticalAlignment="Center" Margin="10,0"
+                            IsMoveToPointEnabled="True"
+                            Thumb.DragStarted="ReplayScrubber_DragStarted"
+                            Thumb.DragCompleted="ReplayScrubber_DragCompleted" />
+                    <TextBlock Grid.Column="3" x:Name="ReplayPositionText"
+                               Text="00:00 / 0:00:00" FontSize="12"
+                               FontFamily="Consolas" Foreground="#E8E8EE"
+                               VerticalAlignment="Center" MinWidth="120"
+                               TextAlignment="Right" />
+                </Grid>
+
+                <!-- Row 3: sync to the video (lap anchor + fine nudge) -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Sync to video — Lap"
+                               FontSize="11" Foreground="#C8C8D0"
+                               VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBox Grid.Column="1" x:Name="ReplayLapBox"
+                             Width="48" Height="24" Text=""
+                             Background="#1A1A20" Foreground="#E8E8EC"
+                             BorderBrush="#2A2A33" VerticalContentAlignment="Center"
+                             TextAlignment="Center"
+                             KeyDown="ReplayLapBox_KeyDown" />
+                    <Button Grid.Column="2" x:Name="ReplaySyncLapButton"
+                            Style="{StaticResource ReplayButtonStyle}"
+                            Content="Go" Margin="6,0,0,0"
+                            ToolTip="Jump our data to the on-screen lap"
+                            Click="ReplaySyncLapButton_Click" />
+                    <Button Grid.Column="3" x:Name="ReplayNudgeBackButton"
+                            Style="{StaticResource ReplayButtonStyle}"
+                            Content="◀ −0.5s" Margin="14,0,0,0"
+                            Click="ReplayNudgeBack_Click" />
+                    <Button Grid.Column="4" x:Name="ReplayNudgeFwdButton"
+                            Style="{StaticResource ReplayButtonStyle}"
+                            Content="+0.5s ▶" Margin="6,0,0,0"
+                            Click="ReplayNudgeFwd_Click" />
+                    <TextBlock Grid.Column="5" x:Name="ReplaySyncHintText"
+                               Text="anchor once, both run at 1× — re-sync only if you seek the video"
+                               FontSize="10" Foreground="#6E6E78"
+                               VerticalAlignment="Center" Margin="14,0,0,0"
+                               TextTrimming="CharacterEllipsis" />
+                </Grid>
+
+                <!-- Row 4: live-video delay (LIVE source + delayed broadcast, e.g.
+                     Apple TV 4K). Holds our near-live data back N seconds so it
+                     lines up with the video. No effect during replay. -->
+                <Grid Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="48" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Live video delay (Apple TV)"
+                               FontSize="11" Foreground="#C8C8D0"
+                               VerticalAlignment="Center"
+                               ToolTip="When watching the LIVE session on a delayed feed (e.g. Apple TV / F1 TV 4K), hold our live data back this many seconds so it matches the picture. Ignored while replaying." />
+                    <Slider Grid.Column="1" x:Name="ReplayBroadcastDelaySlider"
+                            Minimum="0" Maximum="30"
+                            TickFrequency="1" IsSnapToTickEnabled="True"
+                            SmallChange="1" LargeChange="5"
+                            VerticalAlignment="Center" Margin="10,0" />
+                    <TextBlock Grid.Column="2" x:Name="ReplayBroadcastDelayText"
+                               Text="0 s" FontSize="11" FontWeight="SemiBold"
+                               Foreground="#E8E8EE" VerticalAlignment="Center"
+                               TextAlignment="Right" />
+                </Grid>
+            </StackPanel>
         </Border>
 
         <!-- Shift-light range sliders -->

@@ -1,11 +1,13 @@
 using System;
 using System.IO;
 using System.Reflection;
+using F1SimHubLive.F1Replay;
 using F1SimHubLive.F1Signalr;
 using F1SimHubLive.MultiViewer;
 using F1SimHubLive.Telemetry;
 using GameReaderCommon;
 using log4net;
+using Newtonsoft.Json.Linq;
 using SimHub.Plugins;
 
 namespace F1SimHubLive
@@ -23,6 +25,21 @@ namespace F1SimHubLive
         private readonly TelemetryBuffer _buffer = new();
         private ITelemetrySource? _client;
         private Interpolator? _interp;
+
+        // Active replay engine when in on-demand replay mode (Source=F1Replay or
+        // a picker "load session" command). Null while a live/MultiViewer source
+        // is active. Held as the concrete type so the command channel can drive
+        // its transport (play/pause/seek/speed) directly.
+        private F1ReplayClient? _replay;
+        private readonly object _clientSwapLock = new();
+
+        // Picker -> plugin replay command channel (F1SimHubLive.ReplayCommand.json),
+        // and the plugin -> picker status channel (F1SimHubLive.ReplayStatus.json).
+        private FileSystemWatcher? _replayCmdWatcher;
+        private System.Threading.Timer? _replayCmdDebounce;
+        private readonly object _replayCmdLock = new();
+        private long _lastReplaySeq = -1;
+        private System.Threading.Timer? _replayStatusTimer;
 
         private double _topSpeedSeen;
         private int _topSpeedSessionKey;
@@ -140,6 +157,14 @@ namespace F1SimHubLive
             Register("Status", "Initializing");
             Register("MultiViewerRunning", false);
 
+            // Replay-mode status, mirrored to the wheel dashboard and the picker.
+            Register("ReplayActive", false);
+            Register("ReplayPlaying", false);
+            Register("ReplaySpeed", 1.0);
+            Register("ReplayPositionSec", 0);
+            Register("ReplayDurationSec", 0);
+            Register("ReplaySessionName", "");
+
             // v1.5.0 runtime LED switcher: locates the SimHub install root from
             // where this plugin DLL is loaded, then on MV transitions snapshots
             // and flips each device's LED activeProfileId so the user gets
@@ -187,107 +212,12 @@ namespace F1SimHubLive
             _interp = new Interpolator(_buffer, _settings.OutputHz, _settings.RenderDelayMs);
             _interp.Start();
 
-            _client = CreateClient();
-            _client.OnSnapshot += s => _buffer.Push(s);
-            _client.OnTimingSnapshot += t =>
-            {
-                SetProp("Lap", t.Lap);
-                SetProp("Position", t.Position);
-                SetProp("BestLapTime", t.BestLapTime);
-                SetProp("LastLapTime", t.LastLapTime);
-                SetProp("GapToLeader", t.GapToLeader);
-                SetProp("IntervalToAhead", t.IntervalToAhead);
-                SetProp("InPit", t.InPit);
-                SetProp("TyreCompound", t.TyreCompound ?? "");
-                SetProp("TyreCompoundShort", ShortCompound(t.TyreCompound));
-                SetProp("TyreAge", t.TyreAge);
-                SetProp("Sector1Time", t.Sector1Time);
-                SetProp("Sector2Time", t.Sector2Time);
-                SetProp("Sector3Time", t.Sector3Time);
-                SetProp("Sector1IsPersonalBest", t.Sector1IsPersonalBest);
-                SetProp("Sector2IsPersonalBest", t.Sector2IsPersonalBest);
-                SetProp("Sector3IsPersonalBest", t.Sector3IsPersonalBest);
-                SetProp("Sector1IsOverallBest", t.Sector1IsOverallBest);
-                SetProp("Sector2IsOverallBest", t.Sector2IsOverallBest);
-                SetProp("Sector3IsOverallBest", t.Sector3IsOverallBest);
-                SetProp("AheadSector1Time", t.AheadSector1Time);
-                SetProp("AheadCarNumber", t.AheadCarNumber);
-                SetProp("LeaderCarNumber", t.LeaderCarNumber);
-                SetProp("AheadLastLapTime", t.AheadLastLapTime);
-                SetProp("AheadBestLapTime", t.AheadBestLapTime);
-                SetProp("LeaderLastLapTime", t.LeaderLastLapTime);
-                SetProp("LeaderBestLapTime", t.LeaderBestLapTime);
-                SetProp("AheadInPit", t.AheadInPit);
-                SetProp("LeaderInPit", t.LeaderInPit);
-                SetProp("AheadSector2Time", t.AheadSector2Time);
-                SetProp("AheadSector3Time", t.AheadSector3Time);
-                SetProp("AheadSector1IsPersonalBest", t.AheadSector1IsPersonalBest);
-                SetProp("AheadSector2IsPersonalBest", t.AheadSector2IsPersonalBest);
-                SetProp("AheadSector3IsPersonalBest", t.AheadSector3IsPersonalBest);
-                SetProp("AheadSector1IsOverallBest", t.AheadSector1IsOverallBest);
-                SetProp("AheadSector2IsOverallBest", t.AheadSector2IsOverallBest);
-                SetProp("AheadSector3IsOverallBest", t.AheadSector3IsOverallBest);
-                SetProp("LeaderSector1Time", t.LeaderSector1Time);
-                SetProp("LeaderSector2Time", t.LeaderSector2Time);
-                SetProp("LeaderSector3Time", t.LeaderSector3Time);
-                SetProp("LeaderSector1IsPersonalBest", t.LeaderSector1IsPersonalBest);
-                SetProp("LeaderSector2IsPersonalBest", t.LeaderSector2IsPersonalBest);
-                SetProp("LeaderSector3IsPersonalBest", t.LeaderSector3IsPersonalBest);
-                SetProp("LeaderSector1IsOverallBest", t.LeaderSector1IsOverallBest);
-                SetProp("LeaderSector2IsOverallBest", t.LeaderSector2IsOverallBest);
-                SetProp("LeaderSector3IsOverallBest", t.LeaderSector3IsOverallBest);
-                SetProp("PitStopCount", t.PitStopCount);
-                UpdateTopSpeedFromTimingStats(t.TopSpeed);
-                SetProp("TopSpeedRank", t.TopSpeedRank);
-                SetProp("OvertakeSystemEnabled", t.OvertakeSystemEnabled);
-                SetProp("OvertakeAvailable", t.OvertakeAvailable);
-                SetProp("FlagText", t.FlagText);
-            };
-            _client.OnSessionSnapshot += sess =>
-            {
-                int key = (sess.TotalLaps << 16) ^ (sess.CurrentLap > 0 ? 1 : 0);
-                if (key != _topSpeedSessionKey)
-                {
-                    _topSpeedSessionKey = key;
-                    _topSpeedSeen = 0.0;
-                }
-                SetProp("CurrentLap", sess.CurrentLap);
-                SetProp("TotalLaps", sess.TotalLaps);
-                SetProp("LapDisplay", FormatLapDisplay(sess.CurrentLap, sess.TotalLaps));
-                SetProp("TrackStatus", sess.TrackStatusMessage ?? "");
-                SetProp("TrackStatusCode", sess.TrackStatusCode);
-                SetProp("SessionTimeRemaining", sess.SessionTimeRemaining ?? "");
-                SetProp("TotalDrivers", sess.TotalDrivers);
-            };
-            _client.OnWeatherSnapshot += w =>
-            {
-                SetProp("AirTemp", w.AirTemp);
-                SetProp("TrackTemp", w.TrackTemp);
-                SetProp("Humidity", w.Humidity);
-                SetProp("Rainfall", w.Rainfall);
-                SetProp("WindSpeedKph", w.WindSpeedKph);
-            };
-            _client.OnStatus += s => SetProp("Status", s);
-            _client.OnDriverInfoSnapshot += info =>
-            {
-                SetProp("DriverTla", info.Tla ?? "");
-                SetProp("DriverFirstName", info.FirstName ?? "");
-                SetProp("DriverLastName", info.LastName ?? "");
-                SetProp("DriverFullName", info.FullName ?? "");
-                SetProp("DriverBroadcastName", info.BroadcastName ?? "");
-                SetProp("TeamName", info.TeamName ?? "");
-                SetProp("TeamColour", info.TeamColour ?? "");
-            };
-            _ = _client.StartAsync().ContinueWith(t =>
-            {
-                if (t.Exception != null)
-                {
-                    Log("unhandled in StartAsync: " + t.Exception.GetBaseException().Message);
-                }
-            }, System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
+            WireAndStart(CreateClient());
 
             StartSettingsWatcher();
             MaybeLaunchPicker();
+            StartReplayCommandWatcher();
+            StartReplayStatusPublisher();
 
             Log($"started, source={_settings.Source}, target driver #{_settings.DriverNumber}, output {_settings.OutputHz} Hz, render delay {_settings.RenderDelayMs} ms");
         }
@@ -360,6 +290,17 @@ namespace F1SimHubLive
                         _client?.SetDriverNumber(fresh.DriverNumber);
                         Log($"live driver swap: {previous} -> {fresh.DriverNumber}");
                     }
+
+                    // Broadcast-sync delay hot-reload: the picker's "Live video
+                    // delay" slider writes this; apply it live so the user can
+                    // dial the data into a delayed video feed without restarting.
+                    if (fresh.BroadcastDelayMs != _settings.BroadcastDelayMs)
+                    {
+                        int previousDelay = _settings.BroadcastDelayMs;
+                        _settings.BroadcastDelayMs = Math.Max(0, fresh.BroadcastDelayMs);
+                        ApplyBroadcastDelay();
+                        Log($"broadcast-sync delay change: {previousDelay} -> {_settings.BroadcastDelayMs} ms");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -421,9 +362,325 @@ namespace F1SimHubLive
                     _settings.MultiViewerTimingPollMs,
                     Log);
             }
+            if (string.Equals(src, "F1Replay", StringComparison.OrdinalIgnoreCase))
+            {
+                Log($"using F1 Replay source: {_settings.ReplaySessionPath}");
+                return new F1ReplayClient(_settings.DriverNumber, _settings.ReplaySessionPath, Log);
+            }
             Log("using F1 Live SignalR source");
             return new F1SignalRClient(_settings.DriverNumber, Log);
         }
+
+        // ----- Telemetry-source wiring + runtime swap ---------------------------
+        // The source can change at runtime: the picker can load a replay session
+        // (live/MV -> F1Replay) or return to live. WireAndStart binds the common
+        // ITelemetrySource events to SimHub properties; SwapClient tears down the
+        // old source and brings up a new one without restarting SimHub.
+
+        private void WireAndStart(ITelemetrySource client)
+        {
+            _client = client;
+            _replay = client as F1ReplayClient;
+            SetProp("ReplayActive", _replay != null);
+
+            client.OnSnapshot += s => _buffer.Push(s);
+            client.OnTimingSnapshot += t =>
+            {
+                SetProp("Lap", t.Lap);
+                SetProp("Position", t.Position);
+                SetProp("BestLapTime", t.BestLapTime);
+                SetProp("LastLapTime", t.LastLapTime);
+                SetProp("GapToLeader", t.GapToLeader);
+                SetProp("IntervalToAhead", t.IntervalToAhead);
+                SetProp("InPit", t.InPit);
+                SetProp("TyreCompound", t.TyreCompound ?? "");
+                SetProp("TyreCompoundShort", ShortCompound(t.TyreCompound));
+                SetProp("TyreAge", t.TyreAge);
+                SetProp("Sector1Time", t.Sector1Time);
+                SetProp("Sector2Time", t.Sector2Time);
+                SetProp("Sector3Time", t.Sector3Time);
+                SetProp("Sector1IsPersonalBest", t.Sector1IsPersonalBest);
+                SetProp("Sector2IsPersonalBest", t.Sector2IsPersonalBest);
+                SetProp("Sector3IsPersonalBest", t.Sector3IsPersonalBest);
+                SetProp("Sector1IsOverallBest", t.Sector1IsOverallBest);
+                SetProp("Sector2IsOverallBest", t.Sector2IsOverallBest);
+                SetProp("Sector3IsOverallBest", t.Sector3IsOverallBest);
+                SetProp("AheadSector1Time", t.AheadSector1Time);
+                SetProp("AheadCarNumber", t.AheadCarNumber);
+                SetProp("LeaderCarNumber", t.LeaderCarNumber);
+                SetProp("AheadLastLapTime", t.AheadLastLapTime);
+                SetProp("AheadBestLapTime", t.AheadBestLapTime);
+                SetProp("LeaderLastLapTime", t.LeaderLastLapTime);
+                SetProp("LeaderBestLapTime", t.LeaderBestLapTime);
+                SetProp("AheadInPit", t.AheadInPit);
+                SetProp("LeaderInPit", t.LeaderInPit);
+                SetProp("AheadSector2Time", t.AheadSector2Time);
+                SetProp("AheadSector3Time", t.AheadSector3Time);
+                SetProp("AheadSector1IsPersonalBest", t.AheadSector1IsPersonalBest);
+                SetProp("AheadSector2IsPersonalBest", t.AheadSector2IsPersonalBest);
+                SetProp("AheadSector3IsPersonalBest", t.AheadSector3IsPersonalBest);
+                SetProp("AheadSector1IsOverallBest", t.AheadSector1IsOverallBest);
+                SetProp("AheadSector2IsOverallBest", t.AheadSector2IsOverallBest);
+                SetProp("AheadSector3IsOverallBest", t.AheadSector3IsOverallBest);
+                SetProp("LeaderSector1Time", t.LeaderSector1Time);
+                SetProp("LeaderSector2Time", t.LeaderSector2Time);
+                SetProp("LeaderSector3Time", t.LeaderSector3Time);
+                SetProp("LeaderSector1IsPersonalBest", t.LeaderSector1IsPersonalBest);
+                SetProp("LeaderSector2IsPersonalBest", t.LeaderSector2IsPersonalBest);
+                SetProp("LeaderSector3IsPersonalBest", t.LeaderSector3IsPersonalBest);
+                SetProp("LeaderSector1IsOverallBest", t.LeaderSector1IsOverallBest);
+                SetProp("LeaderSector2IsOverallBest", t.LeaderSector2IsOverallBest);
+                SetProp("LeaderSector3IsOverallBest", t.LeaderSector3IsOverallBest);
+                SetProp("PitStopCount", t.PitStopCount);
+                UpdateTopSpeedFromTimingStats(t.TopSpeed);
+                SetProp("TopSpeedRank", t.TopSpeedRank);
+                SetProp("OvertakeSystemEnabled", t.OvertakeSystemEnabled);
+                SetProp("OvertakeAvailable", t.OvertakeAvailable);
+                SetProp("FlagText", t.FlagText);
+            };
+            client.OnSessionSnapshot += sess =>
+            {
+                int key = (sess.TotalLaps << 16) ^ (sess.CurrentLap > 0 ? 1 : 0);
+                if (key != _topSpeedSessionKey)
+                {
+                    _topSpeedSessionKey = key;
+                    _topSpeedSeen = 0.0;
+                }
+                SetProp("CurrentLap", sess.CurrentLap);
+                SetProp("TotalLaps", sess.TotalLaps);
+                SetProp("LapDisplay", FormatLapDisplay(sess.CurrentLap, sess.TotalLaps));
+                SetProp("TrackStatus", sess.TrackStatusMessage ?? "");
+                SetProp("TrackStatusCode", sess.TrackStatusCode);
+                SetProp("SessionTimeRemaining", sess.SessionTimeRemaining ?? "");
+                SetProp("TotalDrivers", sess.TotalDrivers);
+            };
+            client.OnWeatherSnapshot += w =>
+            {
+                SetProp("AirTemp", w.AirTemp);
+                SetProp("TrackTemp", w.TrackTemp);
+                SetProp("Humidity", w.Humidity);
+                SetProp("Rainfall", w.Rainfall);
+                SetProp("WindSpeedKph", w.WindSpeedKph);
+            };
+            client.OnStatus += s => SetProp("Status", s);
+            client.OnDriverInfoSnapshot += info =>
+            {
+                SetProp("DriverTla", info.Tla ?? "");
+                SetProp("DriverFirstName", info.FirstName ?? "");
+                SetProp("DriverLastName", info.LastName ?? "");
+                SetProp("DriverFullName", info.FullName ?? "");
+                SetProp("DriverBroadcastName", info.BroadcastName ?? "");
+                SetProp("TeamName", info.TeamName ?? "");
+                SetProp("TeamColour", info.TeamColour ?? "");
+            };
+            _ = client.StartAsync().ContinueWith(t =>
+            {
+                if (t.Exception != null)
+                {
+                    Log("unhandled in StartAsync: " + t.Exception.GetBaseException().Message);
+                }
+            }, System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
+
+            // Re-evaluate the broadcast-sync delay against the new source: live
+            // sources honour the configured delay, the replay source forces 0
+            // (replay is anchored to the video manually).
+            ApplyBroadcastDelay();
+        }
+
+        /// <summary>
+        /// Pushes the configured broadcast-sync delay onto the interpolator and
+        /// sizes the buffer's history window to match. The delay is suppressed
+        /// (0) while the replay source is active. Safe to call repeatedly — it's
+        /// invoked on every source swap and on settings hot-reload.
+        /// </summary>
+        private void ApplyBroadcastDelay()
+        {
+            var interp = _interp;
+            if (interp == null) return;
+            int delay = _replay != null ? 0 : Math.Max(0, _settings.BroadcastDelayMs);
+            interp.BroadcastDelayMs = delay;
+            _buffer.RetentionMs = delay > 0
+                ? delay + _settings.RenderDelayMs + 1500
+                : 1500;
+            if (delay > 0)
+                Log($"broadcast-sync delay active: holding live data {delay} ms to match a delayed video feed");
+        }
+
+        private void SwapClient(ITelemetrySource newClient)
+        {
+            lock (_clientSwapLock)
+            {
+                var old = _client;
+                _client = null;
+                _replay = null;
+                try { old?.Dispose(); } catch (Exception ex) { Log($"old client dispose failed: {ex.Message}"); }
+                WireAndStart(newClient);
+            }
+        }
+
+        // ----- Replay command channel (picker -> plugin) ------------------------
+        // The picker writes F1SimHubLive.ReplayCommand.json with a monotonically
+        // increasing Seq; we act only on commands newer than the last seen Seq.
+
+        private void StartReplayCommandWatcher()
+        {
+            try
+            {
+                string path = ReplayCommandPath();
+                string dir = Path.GetDirectoryName(path) ?? ".";
+                Directory.CreateDirectory(dir);
+                string file = Path.GetFileName(path);
+                _replayCmdWatcher = new FileSystemWatcher(dir, file)
+                {
+                    NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.Size | NotifyFilters.FileName,
+                    EnableRaisingEvents = true,
+                };
+                _replayCmdWatcher.Changed += (_, __) => ScheduleReplayCmdRead();
+                _replayCmdWatcher.Created += (_, __) => ScheduleReplayCmdRead();
+                _replayCmdWatcher.Renamed += (_, __) => ScheduleReplayCmdRead();
+                // Pick up any command already on disk from a prior picker session.
+                ScheduleReplayCmdRead();
+                Log($"watching replay command channel: {path}");
+            }
+            catch (Exception ex)
+            {
+                Log($"replay command watcher failed to start: {ex.Message}");
+            }
+        }
+
+        private void ScheduleReplayCmdRead()
+        {
+            _replayCmdDebounce?.Dispose();
+            _replayCmdDebounce = new System.Threading.Timer(
+                _ => TryReadReplayCommand(), null, 120, System.Threading.Timeout.Infinite);
+        }
+
+        private void TryReadReplayCommand()
+        {
+            lock (_replayCmdLock)
+            {
+                try
+                {
+                    string path = ReplayCommandPath();
+                    if (!File.Exists(path)) return;
+                    var obj = JObject.Parse(File.ReadAllText(path));
+                    long seq = obj.Value<long?>("Seq") ?? 0;
+                    if (seq <= _lastReplaySeq) return;
+                    _lastReplaySeq = seq;
+                    string command = (obj.Value<string>("Command") ?? "").Trim().ToLowerInvariant();
+                    DispatchReplayCommand(command, obj);
+                }
+                catch (Exception ex)
+                {
+                    Log($"replay command read failed: {ex.Message}");
+                }
+            }
+        }
+
+        private void DispatchReplayCommand(string command, JObject obj)
+        {
+            switch (command)
+            {
+                case "load":
+                    string sessionPath = obj.Value<string>("SessionPath") ?? "";
+                    string sessionName = obj.Value<string>("SessionName") ?? sessionPath;
+                    if (string.IsNullOrWhiteSpace(sessionPath)) { Log("replay load: empty SessionPath"); return; }
+                    EnterReplay(sessionPath, sessionName);
+                    break;
+                case "play":   _replay?.Play(); break;
+                case "pause":  _replay?.Pause(); break;
+                case "toggle": _replay?.TogglePlay(); break;
+                case "speed":  if (_replay != null) _replay.SetSpeed(obj.Value<double?>("Speed") ?? 1.0); break;
+                case "seek":   _replay?.Seek(TimeSpan.FromSeconds(obj.Value<double?>("SeekSeconds") ?? 0)); break;
+                case "seeklap": _replay?.SeekToLap(obj.Value<int?>("SeekLap") ?? 1); break;
+                case "stop":
+                case "golive":
+                    ExitReplayToLive();
+                    break;
+                default:
+                    Log($"replay command ignored (unknown): '{command}'");
+                    break;
+            }
+        }
+
+        private void EnterReplay(string sessionPath, string sessionName)
+        {
+            Log($"entering replay: {sessionName} [{sessionPath}]");
+            _settings.Source = "F1Replay";
+            _settings.ReplaySessionPath = sessionPath;
+            SetProp("Source", "F1Replay");
+            SetProp("ReplaySessionName", sessionName);
+            SwapClient(new F1ReplayClient(_settings.DriverNumber, sessionPath, Log));
+        }
+
+        private void ExitReplayToLive()
+        {
+            string back = string.Equals(_settings.Source, "F1Replay", StringComparison.OrdinalIgnoreCase)
+                ? "F1Live" : _settings.Source;
+            Log($"exiting replay -> {back}");
+            _settings.Source = back;
+            SetProp("Source", back);
+            SetProp("ReplaySessionName", "");
+            SwapClient(back == "MultiViewer"
+                ? new MultiViewerHttpClient(_settings.DriverNumber, _settings.MultiViewerBaseUrl,
+                    _settings.MultiViewerPollMs, _settings.MultiViewerTimingPollMs, Log)
+                : (ITelemetrySource)new F1SignalRClient(_settings.DriverNumber, Log));
+        }
+
+        // ----- Replay status channel (plugin -> picker) -------------------------
+        // Publishes transport state ~3 Hz so the picker can render a live
+        // scrubber + play state, and mirrors it to SimHub props for the wheel.
+
+        private void StartReplayStatusPublisher()
+        {
+            _replayStatusTimer = new System.Threading.Timer(
+                _ => { try { PublishReplayStatus(); } catch (Exception ex) { Log($"replay status publish error: {ex.Message}"); } },
+                null, 500, 333);
+        }
+
+        private void PublishReplayStatus()
+        {
+            var r = _replay;
+            if (r == null)
+            {
+                SetProp("ReplayActive", false);
+                return;
+            }
+            int posSec = (int)r.Position.TotalSeconds;
+            int durSec = (int)r.Duration.TotalSeconds;
+            SetProp("ReplayActive", true);
+            SetProp("ReplayPlaying", r.IsPlaying);
+            SetProp("ReplaySpeed", r.Speed);
+            SetProp("ReplayPositionSec", posSec);
+            SetProp("ReplayDurationSec", durSec);
+
+            var status = new JObject
+            {
+                ["Loaded"] = r.IsLoaded,
+                ["Playing"] = r.IsPlaying,
+                ["Speed"] = r.Speed,
+                ["PositionSec"] = posSec,
+                ["DurationSec"] = durSec,
+                ["CurrentLap"] = r.CurrentLap,
+                ["TotalLaps"] = r.TotalLaps,
+            };
+            try
+            {
+                string path = ReplayStatusPath();
+                string tmp = path + ".tmp";
+                File.WriteAllText(tmp, status.ToString());
+                if (File.Exists(path)) File.Delete(path);
+                File.Move(tmp, path);
+            }
+            catch { /* best effort — picker tolerates a stale/missing status file */ }
+        }
+
+        private static string ReplayCommandPath() =>
+            Path.Combine(Path.GetDirectoryName(SettingsPath()) ?? ".", "F1SimHubLive.ReplayCommand.json");
+
+        private static string ReplayStatusPath() =>
+            Path.Combine(Path.GetDirectoryName(SettingsPath()) ?? ".", "F1SimHubLive.ReplayStatus.json");
+
 
         public void DataUpdate(PluginManager pluginManager, ref GameData data)
         {
@@ -494,6 +751,9 @@ namespace F1SimHubLive
             _settingsWatcher?.Dispose();
             _settingsReloadDebounce?.Dispose();
             _mvProcessTimer?.Dispose();
+            _replayCmdWatcher?.Dispose();
+            _replayCmdDebounce?.Dispose();
+            _replayStatusTimer?.Dispose();
             _interp?.Dispose();
             _client?.Dispose();
         }

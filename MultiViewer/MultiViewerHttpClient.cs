@@ -1,9 +1,11 @@
 using System;
+using System.Globalization;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using F1SimHubLive.F1Signalr;
 using F1SimHubLive.Telemetry;
+using Newtonsoft.Json.Linq;
 
 namespace F1SimHubLive.MultiViewer
 {
@@ -29,6 +31,10 @@ namespace F1SimHubLive.MultiViewer
         // when the selected driver has no frames in a batch or just after a
         // switch (unlike _lastEmittedUtc, which is per-driver and forward-only).
         private DateTime _playheadUtc = DateTime.MinValue;
+        // Session end in UTC, parsed once from SessionInfo (EndDate + GmtOffset).
+        // The wheel countdown is SessionEndUtc - playhead, identical to the
+        // picker header clock, which is the proven formula.
+        private DateTime? _sessionEndUtc;
         // Latest valid ExtrapolatedClock anchor ({Utc, Remaining, Extrapolating}).
         // The session clock is this anchor extrapolated to the current CarData
         // playback position — no hard-coded duration, no race-start dependency.
@@ -169,9 +175,9 @@ namespace F1SimHubLive.MultiViewer
             string lapUrl = $"{_baseUrl}/api/v1/live-timing/LapCount";
             string statusUrl = $"{_baseUrl}/api/v1/live-timing/TrackStatus";
             string clockUrl = $"{_baseUrl}/api/v1/live-timing/ExtrapolatedClock";
-            string sessionUrl = $"{_baseUrl}/api/v1/live-timing/SessionData";
+            string sessionUrl = $"{_baseUrl}/api/v1/live-timing/SessionInfo";
             string driverListUrl = $"{_baseUrl}/api/v1/live-timing/DriverList";
-            _log("MultiViewer polling LapCount+TrackStatus+ExtrapolatedClock+SessionData every " + _timingPollIntervalMs + " ms");
+            _log("MultiViewer polling LapCount+TrackStatus+ExtrapolatedClock+SessionInfo every " + _timingPollIntervalMs + " ms");
 
             while (!ct.IsCancellationRequested)
             {
@@ -195,9 +201,11 @@ namespace F1SimHubLive.MultiViewer
                     string lapJson = await SafeGetString(lapTask, "LapCount").ConfigureAwait(false);
                     string statusJson = await SafeGetString(statusTask, "TrackStatus").ConfigureAwait(false);
                     string clockJson = await SafeGetString(clockTask, "ExtrapolatedClock").ConfigureAwait(false);
-                    // SessionData is still drained so the request completes, but
-                    // the wheel clock no longer needs the race-start time from it.
-                    _ = await SafeGetString(sessionTask, "SessionData").ConfigureAwait(false);
+                    // SessionInfo carries EndDate + GmtOffset → cache session end
+                    // in UTC. Parsed every iteration (cheap) but only changes
+                    // once per session; drives the wheel countdown below.
+                    string sessionInfoJson = await SafeGetString(sessionTask, "SessionInfo").ConfigureAwait(false);
+                    if (sessionInfoJson.Length > 0) TryUpdateSessionEnd(sessionInfoJson);
 
                     // DriverList: fetched once (field size doesn't change mid-race). Retry each
                     // iteration until we get a non-zero count, and until we resolve identity
@@ -250,11 +258,21 @@ namespace F1SimHubLive.MultiViewer
                     // uses only the ExtrapolatedClock's own Utc baseline + the
                     // CarData frame Utc, so it can't drift to a phantom +1h from
                     // a stale duration guess (the old 2h-default bug).
+                    // Wheel countdown — identical formula to the picker header
+                    // clock: remaining = SessionEnd(UTC) - playback position.
+                    // The playhead is the driver-independent CarData frame UTC,
+                    // so it advances with the video and survives driver switches.
+                    // Fall back to the ExtrapolatedClock anchor only when
+                    // SessionInfo hasn't yielded an end time yet.
                     string remainingText = "";
-                    if (_lastClock.IsValid && _playheadUtc != DateTime.MinValue)
+                    if (_sessionEndUtc.HasValue && _playheadUtc != DateTime.MinValue)
+                    {
+                        remainingText = FormatRemaining(_sessionEndUtc.Value - _playheadUtc);
+                    }
+                    else if (_lastClock.IsValid && _playheadUtc != DateTime.MinValue)
                     {
                         var live = ExtrapolatedClockDecoder.LiveRemaining(_lastClock, _playheadUtc);
-                        remainingText = ExtrapolatedClockDecoder.Format(live);
+                        remainingText = FormatRemaining(live);
                     }
 
                     OnSessionSnapshot?.Invoke(new SessionSnapshot
@@ -331,6 +349,39 @@ namespace F1SimHubLive.MultiViewer
                 try { await Task.Delay(weatherIntervalMs, ct).ConfigureAwait(false); }
                 catch (TaskCanceledException) { break; }
             }
+        }
+
+        // Parses SessionInfo's EndDate (session-local, no offset) + GmtOffset
+        // (local→UTC delta) into an absolute UTC end time, exactly like the
+        // picker. Cached in _sessionEndUtc; tolerant of missing/garbage fields.
+        private void TryUpdateSessionEnd(string json)
+        {
+            try
+            {
+                var root = JObject.Parse(json);
+                string? endDateStr = root["EndDate"]?.Value<string>();
+                string? gmtOffsetStr = root["GmtOffset"]?.Value<string>();
+                if (!string.IsNullOrEmpty(endDateStr) && !string.IsNullOrEmpty(gmtOffsetStr) &&
+                    DateTime.TryParse(endDateStr, CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeLocal, out var endLocal) &&
+                    TimeSpan.TryParse(gmtOffsetStr, CultureInfo.InvariantCulture, out var gmtOffset))
+                {
+                    _sessionEndUtc = new DateTimeOffset(
+                        DateTime.SpecifyKind(endLocal, DateTimeKind.Unspecified),
+                        gmtOffset).UtcDateTime;
+                }
+            }
+            catch { }
+        }
+
+        // Matches the picker's FormatHms: H:MM:SS for races, M:SS for sub-hour
+        // practice/qualifying (no leading zero on minutes, no phantom hour).
+        private static string FormatRemaining(TimeSpan ts)
+        {
+            if (ts < TimeSpan.Zero) ts = TimeSpan.Zero;
+            return ts.TotalHours >= 1
+                ? $"{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}"
+                : $"{ts.Minutes}:{ts.Seconds:D2}";
         }
 
         private void HandleCarDataResponse(string json)

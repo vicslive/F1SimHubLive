@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.11] — 2026-06-27
+
+### Changed
+- **Wheel/dashboard countdown now uses the exact same formula as the picker header clock.** The wheel previously derived `SessionTimeRemaining` from MV's `ExtrapolatedClock` anchor; on this setup that produced an empty string, so the dashboard fell back to its `-:--:--` placeholder. The plugin now polls **SessionInfo** for `EndDate`+`GmtOffset`, caches the session end in UTC, and emits `SessionEndUtc − playhead` (driver-independent CarData frame position) — byte-for-byte the picker's proven approach, including its `M:SS` / `H:MM:SS` formatting (no leading-zero minutes, no phantom hour). The `ExtrapolatedClock` anchor is retained only as a fallback until SessionInfo yields an end time.
+
 ## [1.10.10] — 2026-06-27
 
 ### Fixed

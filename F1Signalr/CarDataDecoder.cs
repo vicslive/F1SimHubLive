@@ -32,6 +32,43 @@ namespace F1SimHubLive.F1Signalr
             return ParseCarDataJson(json, driverNumber);
         }
 
+        /// <summary>
+        /// Decodes the latest channels for <b>every</b> car present in a CarData
+        /// payload (already-inflated JSON), keyed by racing-number string. Used by
+        /// the replay grid to show all drivers at once. The last entry in the
+        /// payload wins per driver, so the returned map is the freshest snapshot
+        /// at that timeline position.
+        /// </summary>
+        public static Dictionary<string, DriverSnapshot> ParseAllLatestJson(string json)
+        {
+            var map = new Dictionary<string, DriverSnapshot>();
+            var root = JObject.Parse(json);
+            if (root["Entries"] is not JArray entries) return map;
+
+            foreach (var entry in entries)
+            {
+                DateTime utc = entry["Utc"]?.Value<DateTime>() ?? DateTime.UtcNow;
+                if (entry["Cars"] is not JObject cars) continue;
+                foreach (var carProp in cars.Properties())
+                {
+                    var channels = carProp.Value?["Channels"];
+                    if (channels == null) continue;
+                    map[carProp.Name] = new DriverSnapshot
+                    {
+                        Utc = utc,
+                        DriverNumber = carProp.Name,
+                        Rpm = (double?)channels[ChRpm] ?? 0,
+                        Speed = (double?)channels[ChSpeed] ?? 0,
+                        Gear = (int?)channels[ChGear] ?? 0,
+                        Throttle = (double?)channels[ChThrottle] ?? 0,
+                        Brake = (double?)channels[ChBrake] ?? 0,
+                        Drs = (int?)channels[ChDrs] ?? 0,
+                    };
+                }
+            }
+            return map;
+        }
+
         public static IEnumerable<DriverSnapshot> ParseCarDataJson(string json, string driverNumber)
         {
             var root = JObject.Parse(json);

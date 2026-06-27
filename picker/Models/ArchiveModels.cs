@@ -20,7 +20,6 @@ public sealed class ArchiveMeeting
     public string Name { get; set; } = "";
     public string OfficialName { get; set; } = "";
     public string Location { get; set; } = "";
-    public string Country { get; set; } = "";
     public List<ArchiveSession>? Sessions { get; set; }
 }
 
@@ -45,4 +44,9 @@ public sealed class ArchiveSession
         string.IsNullOrEmpty(MeetingName) ? FriendlyType : $"{MeetingName} — {FriendlyType}";
 
     private string FriendlyType => string.IsNullOrWhiteSpace(Name) ? Type : Name;
+
+    // Both the dropdown items and the closed selection box render via ToString(),
+    // so the label shows without depending on DisplayMemberPath (which the custom
+    // dark ComboBox template doesn't propagate to the selection box).
+    public override string ToString() => DisplayLabel;
 }

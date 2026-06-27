@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using F1SimHubLive.F1Signalr;
@@ -8,6 +10,25 @@ using Newtonsoft.Json.Linq;
 
 namespace F1SimHubLive.F1Replay
 {
+    /// <summary>
+    /// One driver's line in the replay grid snapshot the plugin publishes for
+    /// the picker (identity + live car telemetry). No timing fields — the replay
+    /// topic set carries CarData + DriverList only, so positions / gaps / sectors
+    /// / lap times / tyres are intentionally absent in Phase 1.
+    /// </summary>
+    internal sealed class ReplayGridRow
+    {
+        public string Num = "";
+        public string Tla = "";
+        public string LastName = "";
+        public string TeamName = "";
+        public string TeamColour = "";
+        public int Rpm;
+        public int Speed;
+        public int Gear;
+        public int Throttle;
+    }
+
     /// <summary>
     /// On-demand replay telemetry source. Plays a past session's recorded feed
     /// from F1's public live-timing static archive — no MultiViewer, no F1 TV
@@ -49,6 +70,14 @@ namespace F1SimHubLive.F1Replay
         private int _totalLaps;
         private bool _driverInfoEmitted;
         private bool _firstSnapshotSent;
+
+        // ----- Replay grid (all drivers, for the picker) ---------------------
+        // identity is populated from DriverList; telemetry from CarData. Both
+        // guarded by _gridGate because the clock thread writes while the plugin's
+        // status-publisher thread reads via GetGrid().
+        private readonly object _gridGate = new();
+        private readonly Dictionary<string, DriverInfoSnapshot> _gridIdentity = new();
+        private readonly Dictionary<string, DriverSnapshot> _gridTelemetry = new();
 
         public event Action<DriverSnapshot>? OnSnapshot;
 #pragma warning disable CS0067 // Timing snapshots are not produced in the MVP topic set.
@@ -263,7 +292,10 @@ namespace F1SimHubLive.F1Replay
 
         private void EmitCarData(string base64Deflate)
         {
-            foreach (var snap in CarDataDecoder.ParseCarData(base64Deflate, _driverNumber))
+            string json = CarDataDecoder.Inflate(base64Deflate);
+
+            // Selected driver -> the wheel / dashboard (unchanged behaviour).
+            foreach (var snap in CarDataDecoder.ParseCarDataJson(json, _driverNumber))
             {
                 // Stamp wall-clock so the interpolator brackets prev/curr the
                 // same way it does for the live feed (recorded timestamps live
@@ -276,10 +308,30 @@ namespace F1SimHubLive.F1Replay
                     OnStatus?.Invoke("Connected");
                 }
             }
+
+            // All drivers -> the replay grid the picker renders.
+            var latest = CarDataDecoder.ParseAllLatestJson(json);
+            if (latest.Count > 0)
+            {
+                lock (_gridGate)
+                {
+                    foreach (var kv in latest) _gridTelemetry[kv.Key] = kv.Value;
+                }
+            }
         }
 
         private void ApplyDriverList(string json)
         {
+            // Full-field identity for the replay grid (all drivers).
+            var all = DriverListDecoder.ParseAllDrivers(json);
+            if (all.Count > 0)
+            {
+                lock (_gridGate)
+                {
+                    foreach (var kv in all) _gridIdentity[kv.Key] = kv.Value;
+                }
+            }
+
             int n = DriverListDecoder.CountDrivers(json);
             if (n > _totalDrivers)
             {
@@ -291,6 +343,46 @@ namespace F1SimHubLive.F1Replay
             if (info == null || (info.LastName.Length == 0 && info.Tla.Length == 0)) return;
             _driverInfoEmitted = true;
             OnDriverInfoSnapshot?.Invoke(info);
+        }
+
+        /// <summary>
+        /// Snapshot of every driver in the field at the current replay position:
+        /// identity (TLA / last name / team colour) merged with live car telemetry
+        /// (RPM / speed / gear / throttle). Ordered by racing number. The plugin
+        /// serialises this to <c>F1SimHubLive.ReplayGrid.json</c> for the picker.
+        /// </summary>
+        public IReadOnlyList<ReplayGridRow> GetGrid()
+        {
+            var rows = new List<ReplayGridRow>();
+            lock (_gridGate)
+            {
+                var nums = new HashSet<string>(_gridIdentity.Keys);
+                foreach (var k in _gridTelemetry.Keys) nums.Add(k);
+                foreach (var num in nums)
+                {
+                    _gridIdentity.TryGetValue(num, out var id);
+                    _gridTelemetry.TryGetValue(num, out var t);
+                    rows.Add(new ReplayGridRow
+                    {
+                        Num = num,
+                        Tla = id?.Tla ?? "",
+                        LastName = id?.LastName ?? "",
+                        TeamName = id?.TeamName ?? "",
+                        TeamColour = id?.TeamColour ?? "",
+                        Rpm = (int)Math.Round(t?.Rpm ?? 0),
+                        Speed = (int)Math.Round(t?.Speed ?? 0),
+                        Gear = t?.Gear ?? 0,
+                        Throttle = (int)Math.Round(t?.Throttle ?? 0),
+                    });
+                }
+            }
+            rows.Sort((a, b) =>
+            {
+                int ai = int.TryParse(a.Num, NumberStyles.Integer, CultureInfo.InvariantCulture, out var x) ? x : int.MaxValue;
+                int bi = int.TryParse(b.Num, NumberStyles.Integer, CultureInfo.InvariantCulture, out var y) ? y : int.MaxValue;
+                return ai.CompareTo(bi);
+            });
+            return rows;
         }
 
         private void ApplyTrackStatus(string json)

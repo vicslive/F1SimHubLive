@@ -109,7 +109,6 @@ namespace F1SimHubLive.F1Replay
         public string Name { get; set; } = "";
         public string OfficialName { get; set; } = "";
         public string Location { get; set; } = "";
-        public string Country { get; set; } = "";
         public List<SessionInfo>? Sessions { get; set; }
     }
 

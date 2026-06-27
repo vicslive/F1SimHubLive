@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -38,6 +39,11 @@ public partial class MainWindow
 
     private DispatcherTimer? _broadcastDelayWriteTimer;
     private bool _suppressBroadcastDelayWrite;  // true while seeding the slider from settings
+
+    // ----- replay grid (all drivers; replaces the MV-fed grid while in replay)
+    private readonly ObservableCollection<DriverTimingRow> _replayRows = new();
+    private readonly Dictionary<string, DriverTimingRow> _replayRowMap = new();
+    private bool _replayGridMode;   // true while the grid is bound to _replayRows
 
     private void InitReplay()
     {
@@ -116,7 +122,6 @@ public partial class MainWindow
             var sessions = await _archive.GetSessionsAsync(year);
             _archiveSessions = sessions;
             _archiveLoaded = true;
-            ReplaySessionCombo.DisplayMemberPath = nameof(ArchiveSession.DisplayLabel);
             ReplaySessionCombo.ItemsSource = sessions;
             if (sessions.Count > 0) ReplaySessionCombo.SelectedIndex = 0;
             ReplayStateText.Text = sessions.Count == 0
@@ -241,6 +246,7 @@ public partial class MainWindow
                 // leave whatever browse status is showing
             }
             _replayWasLoaded = false;
+            ExitReplayGridMode();
             return;
         }
 
@@ -280,6 +286,74 @@ public partial class MainWindow
         {
             _lastPrefSave = DateTime.UtcNow;
             _replayControl.SavePref(_currentReplaySessionPath, st.PositionSec, st.Speed);
+        }
+
+        // All-driver grid: bind to the replay rows and refresh from the plugin's
+        // grid snapshot so the user sees the whole field and can switch drivers
+        // without MultiViewer.
+        EnterReplayGridMode();
+        UpdateReplayGrid();
+    }
+
+    // ----- replay grid feed (plugin -> picker) -----------------------------
+
+    private void EnterReplayGridMode()
+    {
+        if (_replayGridMode) return;
+        _replayGridMode = true;
+        DriverList.ItemsSource = _replayRows;
+        StatusText.Text = "Replay: all drivers · telemetry (no live timing)";
+    }
+
+    private void ExitReplayGridMode()
+    {
+        if (!_replayGridMode) return;
+        _replayGridMode = false;
+        DriverList.ItemsSource = _liveTimingClient.Rows;
+        _replayRows.Clear();
+        _replayRowMap.Clear();
+    }
+
+    private void UpdateReplayGrid()
+    {
+        if (_replayControl == null) return;
+        var grid = _replayControl.ReadGrid();
+        if (grid.Count == 0) return;
+
+        // Structural change (different driver set / order) -> rebuild the rows.
+        bool structureChanged = grid.Count != _replayRows.Count;
+        if (!structureChanged)
+        {
+            for (int i = 0; i < grid.Count; i++)
+            {
+                if (_replayRows[i].RacingNumber != grid[i].Num) { structureChanged = true; break; }
+            }
+        }
+        if (structureChanged)
+        {
+            _replayRows.Clear();
+            _replayRowMap.Clear();
+            foreach (var g in grid)
+            {
+                var row = new DriverTimingRow { RacingNumber = g.Num };
+                _replayRows.Add(row);
+                _replayRowMap[g.Num] = row;
+            }
+        }
+
+        // Update mutable fields in place (INPC -> WPF refreshes the cells).
+        foreach (var g in grid)
+        {
+            if (!_replayRowMap.TryGetValue(g.Num, out var row)) continue;
+            row.Tla = g.Tla;
+            row.LastName = g.LastName;
+            row.TeamName = g.TeamName;
+            row.TeamColour = g.TeamColour;
+            row.Rpm = g.Rpm;
+            row.SpeedKmh = g.Speed;
+            row.Gear = g.Gear;
+            row.Throttle = g.Throttle;
+            row.IsCurrent = !string.IsNullOrEmpty(_currentDriverNumber) && g.Num == _currentDriverNumber;
         }
     }
 

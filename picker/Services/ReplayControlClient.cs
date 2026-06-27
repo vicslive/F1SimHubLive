@@ -36,6 +36,7 @@ public sealed class ReplayControlClient
         string dir = Path.GetDirectoryName(settingsPath) ?? ".";
         _commandPath = Path.Combine(dir, "F1SimHubLive.ReplayCommand.json");
         _statusPath = Path.Combine(dir, "F1SimHubLive.ReplayStatus.json");
+        _gridPath = Path.Combine(dir, "F1SimHubLive.ReplayGrid.json");
         _prefsPath = Path.Combine(dir, "F1SimHubLive.ReplayPrefs.json");
         _seq = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
     }
@@ -108,6 +109,45 @@ public sealed class ReplayControlClient
         }
     }
 
+    // ----- replay grid (all drivers) ---------------------------------------
+
+    private readonly string _gridPath;
+
+    /// <summary>
+    /// Reads the plugin's all-driver replay grid snapshot. Returns an empty list
+    /// when the file is absent/unparseable (e.g. not in replay yet).
+    /// </summary>
+    public IReadOnlyList<ReplayGridDriver> ReadGrid()
+    {
+        try
+        {
+            if (!File.Exists(_gridPath)) return Array.Empty<ReplayGridDriver>();
+            var o = JObject.Parse(File.ReadAllText(_gridPath));
+            if (o["Drivers"] is not JArray arr) return Array.Empty<ReplayGridDriver>();
+            var list = new List<ReplayGridDriver>(arr.Count);
+            foreach (var d in arr)
+            {
+                list.Add(new ReplayGridDriver
+                {
+                    Num = d.Value<string>("Num") ?? "",
+                    Tla = d.Value<string>("Tla") ?? "",
+                    LastName = d.Value<string>("LastName") ?? "",
+                    TeamName = d.Value<string>("TeamName") ?? "",
+                    TeamColour = d.Value<string>("TeamColour") ?? "",
+                    Rpm = d.Value<int?>("Rpm") ?? 0,
+                    Speed = d.Value<int?>("Speed") ?? 0,
+                    Gear = d.Value<int?>("Gear") ?? 0,
+                    Throttle = d.Value<int?>("Throttle") ?? 0,
+                });
+            }
+            return list;
+        }
+        catch
+        {
+            return Array.Empty<ReplayGridDriver>();
+        }
+    }
+
     // ----- per-session sync prefs ------------------------------------------
 
     public ReplaySessionPref GetPref(string sessionPath)
@@ -168,4 +208,21 @@ public sealed class ReplaySessionPref
     /// <summary>Last data position the user left this session at, so reload resumes aligned.</summary>
     public int LastPositionSec { get; set; }
     public double Speed { get; set; } = 1.0;
+}
+
+/// <summary>
+/// One driver in the plugin's replay grid snapshot: identity + live car
+/// telemetry. No timing fields (Phase 1 — replay carries CarData + DriverList).
+/// </summary>
+public sealed class ReplayGridDriver
+{
+    public string Num { get; set; } = "";
+    public string Tla { get; set; } = "";
+    public string LastName { get; set; } = "";
+    public string TeamName { get; set; } = "";
+    public string TeamColour { get; set; } = "";
+    public int Rpm { get; set; }
+    public int Speed { get; set; }
+    public int Gear { get; set; }
+    public int Throttle { get; set; }
 }

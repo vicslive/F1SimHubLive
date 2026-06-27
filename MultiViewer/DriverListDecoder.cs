@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using F1SimHubLive.Telemetry;
 using Newtonsoft.Json.Linq;
 
@@ -73,6 +74,29 @@ namespace F1SimHubLive.MultiViewer
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Parses identity for <b>every</b> driver in a DriverList payload, keyed
+        /// by racing-number string. Used by the replay grid so the picker can show
+        /// the whole field (TLA / last name / team colour) at once.
+        /// </summary>
+        public static Dictionary<string, DriverInfoSnapshot> ParseAllDrivers(string json)
+        {
+            var map = new Dictionary<string, DriverInfoSnapshot>();
+            if (string.IsNullOrWhiteSpace(json)) return map;
+            try
+            {
+                var root = JObject.Parse(json);
+                foreach (var prop in root.Properties())
+                {
+                    if (!IsAllDigits(prop.Name)) continue;
+                    var info = ParseDriverInfo(json, prop.Name);
+                    if (info != null) map[prop.Name] = info;
+                }
+            }
+            catch { /* return whatever parsed */ }
+            return map;
         }
 
         private static bool IsAllDigits(string s)

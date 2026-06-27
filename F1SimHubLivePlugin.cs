@@ -673,6 +673,44 @@ namespace F1SimHubLive
                 File.Move(tmp, path);
             }
             catch { /* best effort — picker tolerates a stale/missing status file */ }
+
+            PublishReplayGrid(r);
+        }
+
+        // All-driver grid snapshot (identity + live car telemetry) so the picker
+        // can show the whole field and switch drivers while in replay — no
+        // MultiViewer required. Phase 1: no timing columns (the replay topic set
+        // carries CarData + DriverList only).
+        private void PublishReplayGrid(F1ReplayClient r)
+        {
+            try
+            {
+                if (!r.IsLoaded) return;
+                var arr = new JArray();
+                foreach (var row in r.GetGrid())
+                {
+                    arr.Add(new JObject
+                    {
+                        ["Num"] = row.Num,
+                        ["Tla"] = row.Tla,
+                        ["LastName"] = row.LastName,
+                        ["TeamName"] = row.TeamName,
+                        ["TeamColour"] = row.TeamColour,
+                        ["Rpm"] = row.Rpm,
+                        ["Speed"] = row.Speed,
+                        ["Gear"] = row.Gear,
+                        ["Throttle"] = row.Throttle,
+                    });
+                }
+                var doc = new JObject { ["Drivers"] = arr };
+
+                string path = ReplayGridPath();
+                string tmp = path + ".tmp";
+                File.WriteAllText(tmp, doc.ToString());
+                if (File.Exists(path)) File.Delete(path);
+                File.Move(tmp, path);
+            }
+            catch { /* best effort — picker tolerates a stale/missing grid file */ }
         }
 
         private static string ReplayCommandPath() =>
@@ -680,6 +718,9 @@ namespace F1SimHubLive
 
         private static string ReplayStatusPath() =>
             Path.Combine(Path.GetDirectoryName(SettingsPath()) ?? ".", "F1SimHubLive.ReplayStatus.json");
+
+        private static string ReplayGridPath() =>
+            Path.Combine(Path.GetDirectoryName(SettingsPath()) ?? ".", "F1SimHubLive.ReplayGrid.json");
 
 
         public void DataUpdate(PluginManager pluginManager, ref GameData data)

@@ -6,6 +6,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-06-26
+
+### Added
+- **Replay driver grid — the picker now shows the whole field while in `F1Replay` mode, no MultiViewer required.** Until now the picker's driver grid was fed exclusively by MultiViewer (`LiveTimingClient` + `PickerTelemetryClient` polling `localhost:10101`), so in replay it sat blank and you couldn't see or switch drivers. The plugin now decodes **all** cars at the current replay position and publishes a per-driver snapshot — identity (TLA / last name / team colour) merged with live car telemetry (RPM / speed / gear / throttle) — to `F1SimHubLive.ReplayGrid.json` at the existing ~3 Hz status cadence. The picker binds the grid to these rows whenever a replay session is loaded and click-to-switch still works (writes `DriverNumber` → plugin hot-swaps the wheel's active driver via `F1ReplayClient.SetDriverNumber`), so all three modes — live race, MultiViewer on-demand, and pure replay — drive the same grid.
+  - Plugin: `F1ReplayClient.GetGrid()` (all-driver identity+telemetry merge), `CarDataDecoder.ParseAllLatestJson`, `DriverListDecoder.ParseAllDrivers`, and `PublishReplayGrid` on the status timer.
+  - Picker: `ReplayControlClient.ReadGrid()` + `ReplayGridDriver`, and replay-grid binding in `MainWindow.Replay.cs` (`EnterReplayGridMode` / `ExitReplayGridMode` / `UpdateReplayGrid`).
+  - Phase 1 shows identity + car telemetry only; timing columns (position, gaps, sectors, lap times, tyres) render blank in replay because the replay topic set carries CarData + DriverList only — a future phase can add the `TimingData` topic to light those up.
+
+### Fixed
+- **Archive `Index.json` parse crash.** `Meeting.Country` is a nested object (`{Key,Code,Name}`) in F1's archive, not a string — the picker and plugin POCOs typed it as `string`, which threw `Unexpected character … Path 'Meetings[0].Country'` and aborted the whole session list. Removed the unused `Country` field from both `ArchiveMeeting` (picker) and `MeetingInfo` (plugin); Newtonsoft ignores the unmapped property. (`Location`, a real string, is kept.)
+- **White-on-white Replay dropdowns.** The year/session combo boxes rendered light text on a light system background, making options unreadable until hovered. Replaced the shallow combo style with a full dark `ControlTemplate` (hardcoded `#1A1A20` field, custom arrow, dark popup) + `ReplayComboItemStyle`, and added `ArchiveSession.ToString()` so the selected session shows its label instead of the raw type name.
+
 ## [1.8.0] — 2026-06-26
 
 ### Added

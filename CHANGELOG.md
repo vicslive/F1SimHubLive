@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.5] — 2026-06-26
+
+### Fixed
+- **Sector purple (session-best) colour was over-applied** — several drivers (e.g. Antonelli, Russell) showed purple sectors they didn't own. The purple decision was based on our own client-side running-minimum sector tracking, which gets polluted by live sector values MultiViewer doesn't count as a valid best, so multiple drivers falsely tied for the field minimum. Purple is now driven by MultiViewer's authoritative `TimingStats.BestSectors[i].Position == 1` flag (the running-min comparison remains only as a fallback when MV reports no position). Now exactly one driver per sector shows purple.
+
 ## [1.10.4] — 2026-06-26
 
 ### Changed

@@ -405,7 +405,8 @@ public sealed class LiveTimingClient : IDisposable
                 TireCompoundColor: tireColor,
                 TireAge: tireAge,
                 PitStopCount: pitCount,
-                Sectors: sectorData
+                Sectors: sectorData,
+                BestSectorPos: statsBestSectorPos
             ));
         }
 
@@ -614,11 +615,21 @@ public sealed class LiveTimingClient : IDisposable
                 var target = row.Sectors[sIdx];
 
                 // Best-sector row: yellow if PB only, purple if session best.
+                // MV's TimingStats.BestSectors[i].Position == 1 is the
+                // authoritative "field fastest" flag for purple. We only fall
+                // back to our own running-min comparison when MV doesn't report
+                // a position (older builds / sparse data), because our tracked
+                // min can be polluted by live sector values MV doesn't count as
+                // a valid best — which falsely tied several drivers for purple.
                 string bestStr = driverBestStrings != null ? driverBestStrings[sIdx] : "";
                 LapStatus bestStatus = LapStatus.None;
                 if (!string.IsNullOrEmpty(bestStr) && driverBestSecs != null)
                 {
-                    bestStatus = driverBestSecs[sIdx] <= fieldMin[sIdx] + 1e-6
+                    int pos = (s.BestSectorPos != null && sIdx < s.BestSectorPos.Length)
+                        ? s.BestSectorPos[sIdx] : 0;
+                    bool isFieldBest = pos == 1
+                        || (pos == 0 && driverBestSecs[sIdx] <= fieldMin[sIdx] + 1e-6);
+                    bestStatus = isFieldBest
                         ? LapStatus.SessionBest
                         : LapStatus.PersonalBest;
                 }
@@ -749,5 +760,6 @@ public sealed class LiveTimingClient : IDisposable
         string TireCompoundColor,
         int TireAge,
         int PitStopCount,
-        SectorSnapshot[] Sectors);
+        SectorSnapshot[] Sectors,
+        int[] BestSectorPos);
 }

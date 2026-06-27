@@ -644,7 +644,35 @@ public sealed class LiveTimingClient : IDisposable
                     continue;
                 }
                 target.Time = snap.Time;
-                target.Status = snap.Status;
+
+                // Last-lap sector colour. MV's per-sector PersonalFastest /
+                // OverallFastest flags clear on later ticks, so relying on them
+                // alone makes a green/purple sector fall back to yellow a tick
+                // later (the bug Vic saw vs. live timing). Live timing colours
+                // by VALUE: green if the last-lap sector matches the driver's
+                // best, purple if it's the field-fastest. Derive it the same
+                // way, then let MV's explicit flag only strengthen the colour.
+                LapStatus valueStatus = LapStatus.None;
+                if (driverBestSecs != null
+                    && double.TryParse(snap.Time, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double lastSecs)
+                    && lastSecs > 0
+                    && lastSecs <= driverBestSecs[sIdx] + 1e-6)
+                {
+                    int lastPos = (s.BestSectorPos != null && sIdx < s.BestSectorPos.Length)
+                        ? s.BestSectorPos[sIdx] : 0;
+                    bool lastIsFieldBest = lastPos == 1
+                        || (lastPos == 0 && lastSecs <= fieldMin[sIdx] + 1e-6);
+                    valueStatus = lastIsFieldBest
+                        ? LapStatus.SessionBest
+                        : LapStatus.PersonalBest;
+                }
+                LapStatus lastStatus = valueStatus;
+                if (snap.Status == LapStatus.SessionBest)
+                    lastStatus = LapStatus.SessionBest;
+                else if (snap.Status == LapStatus.PersonalBest && lastStatus == LapStatus.None)
+                    lastStatus = LapStatus.PersonalBest;
+                target.Status = lastStatus;
 
                 // Sync segments: replace wholesale to keep the visualisation
                 // simple. Segment counts change rarely (only between tracks),

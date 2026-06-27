@@ -7,9 +7,12 @@ namespace F1SimHubLive.Picker.Services;
 
 /// <summary>
 /// Converts a MultiViewer segment-status integer to the brush used for one
-/// mini-sector tile. Status codes were sniffed live (Monaco FP1, 2025):
-/// 0 = no data, 2048 = yellow (personal best), 2049 = purple (session best),
-/// 2051 = blue (pit), 2064 = green (improving).
+/// mini-sector tile. Standard F1 SignalR segment-status codes:
+/// 0 = no data, 2048 = yellow (set, not improved), 2049 = green (personal
+/// best in segment), 2051 = purple (overall best in segment),
+/// 2064 = blue (pit lane — in-lap / out-lap). Verified live against MV
+/// (Austrian GP P2, 2026): in-pit cars report 2064 on their pit segments,
+/// which live timing renders blue.
 /// </summary>
 internal sealed class SegmentStatusToBrushConverter : IValueConverter
 {
@@ -30,10 +33,10 @@ internal sealed class SegmentStatusToBrushConverter : IValueConverter
         {
             return code switch
             {
-                2049 => Purple,
                 2048 => Yellow,
-                2064 => Green,
-                2051 => Blue,
+                2049 => Green,
+                2051 => Purple,
+                2064 => Blue,
                 _ => Dark,
             };
         }

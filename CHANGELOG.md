@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.6] — 2026-06-26
+
+### Fixed
+- **Segment mini-bar colours were scrambled** — the per-segment status→colour map had three codes wrong: `2049` (personal-best segment) rendered purple, `2051` (overall-best segment) rendered blue, and `2064` (pit-lane in/out-lap segment) rendered green. In-pit cars (RUS, HAD, ANT, VER) therefore showed green pit segments and never showed blue at all. Corrected to the standard F1 codes: `2048`=yellow, `2049`=green, `2051`=purple, `2064`=blue (verified live against MV for the Austrian GP P2 session).
+- **Last-lap sector time colour fell back to yellow** — MultiViewer's per-sector `PersonalFastest`/`OverallFastest` flags clear a tick after they're set, so a green/purple last-lap sector reverted to yellow (mismatching live timing, e.g. Leclerc's green S1/S2). The last-lap sector colour is now derived by value (green when the last-lap sector matches the driver's best, purple when it's the field-fastest via `TimingStats` position), with MV's explicit flag only strengthening the colour — matching live timing and stable across ticks.
+
 ## [1.10.5] — 2026-06-26
 
 ### Fixed

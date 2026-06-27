@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,6 +16,7 @@ namespace F1SimHubLive.F1Replay
         TrackStatus,
         Weather,
         LapCount,
+        ExtrapolatedClock,
     }
 
     /// <summary>One event on the merged replay timeline.</summary>
@@ -49,6 +51,11 @@ namespace F1SimHubLive.F1Replay
             (ReplayTopic.TrackStatus, "TrackStatus.jsonStream"),
             (ReplayTopic.Weather,     "WeatherData.jsonStream"),
             (ReplayTopic.LapCount,    "LapCount.jsonStream"),
+            // The on-screen session clock. Lets the picker anchor data to the
+            // video by the official "P2 59:20"-style countdown — the only sync
+            // reference shared with a DRM video where lap count doesn't exist
+            // (practice / qualifying).
+            (ReplayTopic.ExtrapolatedClock, "ExtrapolatedClock.jsonStream"),
         };
 
         public IReadOnlyList<ReplayEvent> Events { get; private set; } = Array.Empty<ReplayEvent>();
@@ -68,6 +75,15 @@ namespace F1SimHubLive.F1Replay
 
         // lap number -> session offset at which that lap began (sorted).
         private readonly SortedDictionary<int, TimeSpan> _lapStarts = new();
+
+        // Session-clock samples (offset, remaining-seconds, extrapolating), in
+        // offset order. Built by merging the ExtrapolatedClock delta stream.
+        private readonly List<(TimeSpan Offset, double RemainingSec, bool Extrap)> _clockSamples = new();
+        private double _clockRemSec = double.NaN;
+        private bool _clockExtrap;
+
+        /// <summary>True when this session carries an ExtrapolatedClock topic.</summary>
+        public bool HasSessionClock => _clockSamples.Count > 0;
 
         public static async Task<ReplayTimeline> LoadAsync(
             ArchiveClient archive, string sessionPath, Action<string> log, CancellationToken ct = default)
@@ -95,6 +111,8 @@ namespace F1SimHubLive.F1Replay
                     merged.Add(new ReplayEvent(rl.Offset, topic, rl.Payload));
                     if (topic == ReplayTopic.LapCount)
                         timeline.IndexLap(rl.Offset, rl.Payload);
+                    else if (topic == ReplayTopic.ExtrapolatedClock)
+                        timeline.IndexClock(rl.Offset, rl.Payload);
                     else if (topic == ReplayTopic.DriverList && rl.Payload is JObject dl)
                         driverListMerged.Merge(dl, MergeReplace);
                 }
@@ -123,6 +141,99 @@ namespace F1SimHubLive.F1Replay
             if (total > TotalLaps) TotalLaps = total;
             if (current > 0 && !_lapStarts.ContainsKey(current))
                 _lapStarts[current] = offset;
+        }
+
+        // Merge an ExtrapolatedClock delta and record a sample whenever the
+        // remaining time or the extrapolating flag changes. Deltas carry only
+        // changed fields, so we track running state across the stream.
+        private void IndexClock(TimeSpan offset, JToken payload)
+        {
+            if (payload is not JObject o) return;
+            bool changed = false;
+            var rem = o["Remaining"];
+            if (rem != null && rem.Type == JTokenType.String)
+            {
+                var parsed = ParseClock((string)rem!);
+                if (parsed.HasValue) { _clockRemSec = parsed.Value; changed = true; }
+            }
+            var ex = o["Extrapolating"];
+            if (ex != null && ex.Type == JTokenType.Boolean)
+            {
+                _clockExtrap = ex.Value<bool>();
+                changed = true;
+            }
+            if (changed && !double.IsNaN(_clockRemSec))
+                _clockSamples.Add((offset, _clockRemSec, _clockExtrap));
+        }
+
+        private static double? ParseClock(string s)
+        {
+            var p = s.Split(':');
+            if (p.Length != 3) return null;
+            if (!int.TryParse(p[0], out var h)) return null;
+            if (!int.TryParse(p[1], out var m)) return null;
+            if (!double.TryParse(p[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var sec)) return null;
+            return h * 3600 + m * 60 + sec;
+        }
+
+        /// <summary>
+        /// Maps an on-screen session-clock value (time remaining) to the data
+        /// offset where the feed showed that value. Returns null when the session
+        /// has no clock topic. While the clock is running it counts down 1:1 with
+        /// real time, so within a running segment the offset is linear; frozen
+        /// segments (red flags) hold a constant value.
+        /// </summary>
+        public TimeSpan? OffsetForRemaining(TimeSpan remaining)
+        {
+            if (_clockSamples.Count == 0) return null;
+            double target = remaining.TotalSeconds;
+            for (int i = 0; i < _clockSamples.Count - 1; i++)
+            {
+                var a = _clockSamples[i];
+                var b = _clockSamples[i + 1];
+                if (a.Extrap)
+                {
+                    double remAtA = a.RemainingSec;
+                    double remAtB = a.RemainingSec - (b.Offset - a.Offset).TotalSeconds;
+                    if (target <= remAtA + 0.5 && target >= remAtB - 0.5)
+                        return a.Offset + TimeSpan.FromSeconds(remAtA - target);
+                }
+                else if (Math.Abs(a.RemainingSec - target) < 0.5)
+                {
+                    return a.Offset;
+                }
+            }
+            var last = _clockSamples[_clockSamples.Count - 1];
+            if (last.Extrap)
+            {
+                double off = last.Offset.TotalSeconds + (last.RemainingSec - target);
+                return TimeSpan.FromSeconds(Math.Max(0, off));
+            }
+            return last.Offset;
+        }
+
+        /// <summary>
+        /// The session clock (time remaining) at a given data offset — the inverse
+        /// of <see cref="OffsetForRemaining"/>. Lets the picker show the live
+        /// official clock so the user can confirm the anchor. Null when no clock.
+        /// </summary>
+        public TimeSpan? RemainingAt(TimeSpan position)
+        {
+            if (_clockSamples.Count == 0) return null;
+            // Last sample at or before the position.
+            int idx = -1;
+            for (int i = 0; i < _clockSamples.Count; i++)
+            {
+                if (_clockSamples[i].Offset <= position) idx = i;
+                else break;
+            }
+            if (idx < 0) idx = 0;
+            var s = _clockSamples[idx];
+            double rem = s.Extrap
+                ? s.RemainingSec - (position - s.Offset).TotalSeconds
+                : s.RemainingSec;
+            if (rem < 0) rem = 0;
+            return TimeSpan.FromSeconds(rem);
         }
 
         /// <summary>

@@ -191,6 +191,22 @@ namespace F1SimHubLive.F1Replay
             Seek(_timeline.OffsetForLap(lap));
         }
 
+        /// <summary>
+        /// Anchor the data to the on-screen session clock (time remaining).
+        /// No-op when the session has no clock topic.
+        /// </summary>
+        public void SeekToRemaining(TimeSpan remaining)
+        {
+            var off = _timeline?.OffsetForRemaining(remaining);
+            if (off.HasValue) Seek(off.Value);
+        }
+
+        /// <summary>True when the loaded session carries an ExtrapolatedClock.</summary>
+        public bool HasSessionClock => _timeline?.HasSessionClock ?? false;
+
+        /// <summary>Current official session clock (time remaining), or null.</summary>
+        public TimeSpan? SessionRemaining => _timeline?.RemainingAt(Position);
+
         public void SetDriverNumber(string driverNumber)
         {
             if (string.IsNullOrWhiteSpace(driverNumber)) return;
@@ -322,16 +338,6 @@ namespace F1SimHubLive.F1Replay
 
         private void ApplyDriverList(string json)
         {
-            // Full-field identity for the replay grid (all drivers).
-            var all = DriverListDecoder.ParseAllDrivers(json);
-            if (all.Count > 0)
-            {
-                lock (_gridGate)
-                {
-                    foreach (var kv in all) _gridIdentity[kv.Key] = kv.Value;
-                }
-            }
-
             int n = DriverListDecoder.CountDrivers(json);
             if (n > _totalDrivers)
             {
@@ -429,6 +435,22 @@ namespace F1SimHubLive.F1Replay
         {
             var json = _timeline?.FirstDriverListJson;
             if (string.IsNullOrEmpty(json)) return;
+
+            // Populate the replay grid's identity for ALL drivers from the full
+            // merged DriverList snapshot. We deliberately do this here (and on a
+            // driver switch) rather than in ApplyDriverList: F1's in-session
+            // DriverList deltas carry only line/position updates and omit
+            // Tla/TeamName/TeamColour, so upserting them per-delta would blank
+            // the field. FirstDriverListJson is the complete merged snapshot.
+            var all = DriverListDecoder.ParseAllDrivers(json!);
+            if (all.Count > 0)
+            {
+                lock (_gridGate)
+                {
+                    foreach (var kv in all) _gridIdentity[kv.Key] = kv.Value;
+                }
+            }
+
             ApplyDriverList(json!);
         }
 

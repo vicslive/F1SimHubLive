@@ -505,44 +505,83 @@
                                TextAlignment="Right" />
                 </Grid>
 
-                <!-- Row 3: sync to the video (lap anchor + fine nudge) -->
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Sync to video — Lap"
-                               FontSize="11" Foreground="#C8C8D0"
-                               VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBox Grid.Column="1" x:Name="ReplayLapBox"
-                             Width="48" Height="24" Text=""
-                             Background="#1A1A20" Foreground="#E8E8EC"
-                             BorderBrush="#2A2A33" VerticalContentAlignment="Center"
-                             TextAlignment="Center"
-                             KeyDown="ReplayLapBox_KeyDown" />
-                    <Button Grid.Column="2" x:Name="ReplaySyncLapButton"
-                            Style="{StaticResource ReplayButtonStyle}"
-                            Content="Go" Margin="6,0,0,0"
-                            ToolTip="Jump our data to the on-screen lap"
-                            Click="ReplaySyncLapButton_Click" />
-                    <Button Grid.Column="3" x:Name="ReplayNudgeBackButton"
-                            Style="{StaticResource ReplayButtonStyle}"
-                            Content="◀ −0.5s" Margin="14,0,0,0"
-                            Click="ReplayNudgeBack_Click" />
-                    <Button Grid.Column="4" x:Name="ReplayNudgeFwdButton"
-                            Style="{StaticResource ReplayButtonStyle}"
-                            Content="+0.5s ▶" Margin="6,0,0,0"
-                            Click="ReplayNudgeFwd_Click" />
-                    <TextBlock Grid.Column="5" x:Name="ReplaySyncHintText"
-                               Text="anchor once, both run at 1× — re-sync only if you seek the video"
-                               FontSize="10" Foreground="#6E6E78"
-                               VerticalAlignment="Center" Margin="14,0,0,0"
-                               TextTrimming="CharacterEllipsis" />
-                </Grid>
+                <!-- Row 3: sync to the video -->
+                <StackPanel>
+                    <!-- Primary anchor: the on-screen session clock. Works for
+                         every session type (practice/quali have no lap count). -->
+                    <Grid Margin="0,0,0,5">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Sync to video — Clock"
+                                   FontSize="11" Foreground="#C8C8D0"
+                                   VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBox Grid.Column="1" x:Name="ReplayClockBox"
+                                 Width="64" Height="24" Text=""
+                                 Background="#1A1A20" Foreground="#E8E8EC"
+                                 BorderBrush="#2A2A33" VerticalContentAlignment="Center"
+                                 TextAlignment="Center"
+                                 ToolTip="Type the on-screen session clock (e.g. 59:20) and press Enter"
+                                 KeyDown="ReplayClockBox_KeyDown" />
+                        <Button Grid.Column="2" x:Name="ReplaySyncClockButton"
+                                Style="{StaticResource ReplayButtonStyle}"
+                                Content="Go" Margin="6,0,0,0"
+                                ToolTip="Jump our data to the on-screen session clock"
+                                Click="ReplaySyncClockButton_Click" />
+                        <TextBlock Grid.Column="3" x:Name="ReplaySessionClockText"
+                                   Text=""
+                                   FontSize="12" FontFamily="Consolas" FontWeight="Bold"
+                                   Foreground="#7ED957"
+                                   VerticalAlignment="Center" Margin="14,0,0,0" />
+                        <TextBlock Grid.Column="4"
+                                   Text="read the official P-clock off screen, type it, Enter — both then run at 1×"
+                                   FontSize="10" Foreground="#6E6E78"
+                                   VerticalAlignment="Center" Margin="14,0,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                    <!-- Secondary anchor: lap (races) + fine nudge. -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Sync to video — Lap"
+                                   FontSize="11" Foreground="#C8C8D0"
+                                   VerticalAlignment="Center" Margin="0,0,6,0" />
+                        <TextBox Grid.Column="1" x:Name="ReplayLapBox"
+                                 Width="48" Height="24" Text=""
+                                 Background="#1A1A20" Foreground="#E8E8EC"
+                                 BorderBrush="#2A2A33" VerticalContentAlignment="Center"
+                                 TextAlignment="Center"
+                                 KeyDown="ReplayLapBox_KeyDown" />
+                        <Button Grid.Column="2" x:Name="ReplaySyncLapButton"
+                                Style="{StaticResource ReplayButtonStyle}"
+                                Content="Go" Margin="6,0,0,0"
+                                ToolTip="Jump our data to the on-screen lap (races only)"
+                                Click="ReplaySyncLapButton_Click" />
+                        <Button Grid.Column="3" x:Name="ReplayNudgeBackButton"
+                                Style="{StaticResource ReplayButtonStyle}"
+                                Content="◀ −0.5s" Margin="14,0,0,0"
+                                Click="ReplayNudgeBack_Click" />
+                        <Button Grid.Column="4" x:Name="ReplayNudgeFwdButton"
+                                Style="{StaticResource ReplayButtonStyle}"
+                                Content="+0.5s ▶" Margin="6,0,0,0"
+                                Click="ReplayNudgeFwd_Click" />
+                        <TextBlock Grid.Column="5" x:Name="ReplaySyncHintText"
+                                   Text="anchor once, both run at 1× — re-sync only if you seek the video"
+                                   FontSize="10" Foreground="#6E6E78"
+                                   VerticalAlignment="Center" Margin="14,0,0,0"
+                                   TextTrimming="CharacterEllipsis" />
+                    </Grid>
+                </StackPanel>
 
                 <!-- Row 4: live-video delay (LIVE source + delayed broadcast, e.g.
                      Apple TV 4K). Holds our near-live data back N seconds so it

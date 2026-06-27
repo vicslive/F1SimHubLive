@@ -593,6 +593,7 @@ namespace F1SimHubLive
                 case "speed":  if (_replay != null) _replay.SetSpeed(obj.Value<double?>("Speed") ?? 1.0); break;
                 case "seek":   _replay?.Seek(TimeSpan.FromSeconds(obj.Value<double?>("SeekSeconds") ?? 0)); break;
                 case "seeklap": _replay?.SeekToLap(obj.Value<int?>("SeekLap") ?? 1); break;
+                case "seekclock": _replay?.SeekToRemaining(TimeSpan.FromSeconds(obj.Value<double?>("RemainingSec") ?? 0)); break;
                 case "stop":
                 case "golive":
                     ExitReplayToLive();
@@ -663,6 +664,8 @@ namespace F1SimHubLive
                 ["DurationSec"] = durSec,
                 ["CurrentLap"] = r.CurrentLap,
                 ["TotalLaps"] = r.TotalLaps,
+                ["HasClock"] = r.HasSessionClock,
+                ["RemainingSec"] = r.SessionRemaining.HasValue ? (int)r.SessionRemaining.Value.TotalSeconds : -1,
             };
             try
             {

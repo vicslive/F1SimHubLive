@@ -219,6 +219,44 @@ public partial class MainWindow
             _replayControl.SeekToLap(lap);
     }
 
+    // ----- sync: on-screen session clock (primary anchor) ------------------
+
+    private void ReplaySyncClockButton_Click(object sender, RoutedEventArgs e) => SyncToClock();
+
+    private void ReplayClockBox_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) SyncToClock();
+    }
+
+    private void SyncToClock()
+    {
+        if (_replayControl == null) return;
+        var rem = ParseSessionClock(ReplayClockBox.Text);
+        if (rem.HasValue) _replayControl.SeekToClock(rem.Value);
+    }
+
+    // Accepts "mm:ss" or "h:mm:ss" (the on-screen P-clock counts time remaining).
+    private static TimeSpan? ParseSessionClock(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var parts = text.Trim().Split(':');
+        if (parts.Length < 2 || parts.Length > 3) return null;
+        int h = 0, m, s;
+        if (parts.Length == 3)
+        {
+            if (!int.TryParse(parts[0], out h) ||
+                !int.TryParse(parts[1], out m) ||
+                !int.TryParse(parts[2], out s)) return null;
+        }
+        else
+        {
+            if (!int.TryParse(parts[0], out m) ||
+                !int.TryParse(parts[1], out s)) return null;
+        }
+        if (m < 0 || s < 0 || s > 59) return null;
+        return new TimeSpan(h, m, s);
+    }
+
     private void ReplayNudgeBack_Click(object sender, RoutedEventArgs e) => Nudge(-0.5);
     private void ReplayNudgeFwd_Click(object sender, RoutedEventArgs e) => Nudge(+0.5);
 
@@ -279,6 +317,13 @@ public partial class MainWindow
         ReplayStateText.Text = st.TotalLaps > 0
             ? $"Lap {st.CurrentLap}/{st.TotalLaps} · {FormatSpeed(st.Speed)}"
             : $"{FormatClock(st.PositionSec)} · {FormatSpeed(st.Speed)}";
+
+        // Live official session clock (time remaining) so the user can confirm
+        // the anchor matches the on-screen P-clock.
+        if (st.HasClock && st.RemainingSec >= 0)
+            ReplaySessionClockText.Text = "P " + FormatClock(st.RemainingSec);
+        else
+            ReplaySessionClockText.Text = "";
 
         // Persist the per-session anchor (~every 5 s) so reload resumes here.
         if (!string.IsNullOrEmpty(_currentReplaySessionPath) &&

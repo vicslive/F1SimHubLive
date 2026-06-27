@@ -58,6 +58,10 @@ public sealed class ReplayControlClient
 
     public void SeekToLap(int lap) => Write("seeklap", o => o["SeekLap"] = Math.Max(1, lap));
 
+    /// <summary>Anchor the data to the on-screen session clock (time remaining).</summary>
+    public void SeekToClock(TimeSpan remaining) =>
+        Write("seekclock", o => o["RemainingSec"] = Math.Max(0, remaining.TotalSeconds));
+
     private void Write(string command, Action<JObject>? extra = null)
     {
         var o = new JObject
@@ -101,6 +105,8 @@ public sealed class ReplayControlClient
                 DurationSec = o.Value<int?>("DurationSec") ?? 0,
                 CurrentLap = o.Value<int?>("CurrentLap") ?? 0,
                 TotalLaps = o.Value<int?>("TotalLaps") ?? 0,
+                HasClock = o.Value<bool?>("HasClock") ?? false,
+                RemainingSec = o.Value<int?>("RemainingSec") ?? -1,
             };
         }
         catch
@@ -201,6 +207,9 @@ public sealed class ReplayStatus
     public int DurationSec { get; set; }
     public int CurrentLap { get; set; }
     public int TotalLaps { get; set; }
+    public bool HasClock { get; set; }
+    /// <summary>Official session clock (time remaining) in seconds; -1 when none.</summary>
+    public int RemainingSec { get; set; } = -1;
 }
 
 public sealed class ReplaySessionPref

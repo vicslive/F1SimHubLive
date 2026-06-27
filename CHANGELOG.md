@@ -6,6 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.0] — 2026-06-26
+
+### Added
+- **Sync to video by the on-screen session clock — the natural anchor for practice and qualifying.** Lap-sync only works for races (practice/qualifying have no lap counter), and DRM blacks out the F1 TV / Apple TV picture on screen-capture so OCR auto-sync is impossible. So the picker now lets you read the official session clock off the screen (e.g. `P2 59:20`), type it into the new **"Sync to video — Clock"** box, press Enter, and the data jumps to the exact moment the feed showed that value. A live `P MM:SS` readout next to the box shows our current session clock so you can confirm the anchor holds. Works for every session type and is the primary anchor; lap-sync stays as the race-only secondary.
+  - Plugin: `ReplayTimeline` indexes F1's `ExtrapolatedClock` topic (`OffsetForRemaining` maps remaining-time → data offset across running/frozen segments; `RemainingAt` is the inverse for the live readout). `F1ReplayClient.SeekToRemaining` / `HasSessionClock` / `SessionRemaining`; `seekclock` command + `HasClock` / `RemainingSec` in the status channel.
+  - Picker: `ReplayControlClient.SeekToClock`, the clock row in `MainWindow.xaml`, and `SyncToClock` / `ReplayClockBox_KeyDown` parsing (`mm:ss` or `h:mm:ss`) + the live session-clock readout in `MainWindow.Replay.cs`.
+
+### Fixed
+- **Replay driver grid showed blank TLA / team colour for the whole field (regression in 1.9.0).** F1's in-session `DriverList` deltas carry only line/position updates and omit `Tla` / `TeamName` / `TeamColour`, but 1.9.0 upserted grid identity from every delta — blanking the field as soon as the first in-session delta arrived (only the one driver whose delta replayed on seek survived). Identity is now populated **once** from the fully-merged `FirstDriverListJson` snapshot in `ResolveDriverIdentity` and never touched in the per-delta `ApplyDriverList`, so all 22 drivers keep their TLA and team accent colour throughout playback.
+
 ## [1.9.0] — 2026-06-26
 
 ### Added

@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.1] — 2026-06-26
+
+### Fixed
+- **Picker locked onto a frozen, stale replay grid after leaving replay mode.** The plugin rewrites `ReplayStatus.json` / `ReplayGrid.json` ~3 Hz only while a replay is loaded; when SimHub restarts into live/MultiViewer mode (or otherwise leaves replay), those files linger on disk with `Loaded:true`. The picker read them with no freshness check and stayed in replay-grid mode forever — showing a 10-plus-minute-old snapshot (blank TLAs, frozen telemetry) layered under the live MultiViewer wheel/header, which looked like "everything broke". `ReplayControlClient.ReadStatus()` / `ReadGrid()` now ignore status/grid files older than 5 s, so the picker automatically falls back to MultiViewer/live mode when replay isn't actively running.
+
 ## [1.10.0] — 2026-06-26
 
 ### Added

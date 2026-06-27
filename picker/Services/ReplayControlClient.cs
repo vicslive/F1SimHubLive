@@ -90,11 +90,24 @@ public sealed class ReplayControlClient
     // ----- status -----------------------------------------------------------
 
     /// <summary>Reads the plugin's status file. Returns null when absent/stale/unparseable.</summary>
+    /// <summary>
+    /// Max age of the plugin's status file before we treat replay as inactive.
+    /// The plugin rewrites it ~3 Hz while a replay is loaded, so anything older
+    /// than this means the writing instance is gone (SimHub restarted / switched
+    /// to live / MultiViewer). Prevents the picker locking onto a frozen, stale
+    /// grid from a previous session.
+    /// </summary>
+    private static readonly TimeSpan StatusStaleAfter = TimeSpan.FromSeconds(5);
+
     public ReplayStatus? ReadStatus()
     {
         try
         {
             if (!File.Exists(_statusPath)) return null;
+            // A status file older than a few seconds is a leftover from a dead
+            // plugin instance — ignore it so the picker leaves replay-grid mode.
+            if (DateTime.UtcNow - File.GetLastWriteTimeUtc(_statusPath) > StatusStaleAfter)
+                return null;
             var o = JObject.Parse(File.ReadAllText(_statusPath));
             return new ReplayStatus
             {
@@ -128,6 +141,8 @@ public sealed class ReplayControlClient
         try
         {
             if (!File.Exists(_gridPath)) return Array.Empty<ReplayGridDriver>();
+            if (DateTime.UtcNow - File.GetLastWriteTimeUtc(_gridPath) > StatusStaleAfter)
+                return Array.Empty<ReplayGridDriver>();
             var o = JObject.Parse(File.ReadAllText(_gridPath));
             if (o["Drivers"] is not JArray arr) return Array.Empty<ReplayGridDriver>();
             var list = new List<ReplayGridDriver>(arr.Count);

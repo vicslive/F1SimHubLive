@@ -76,6 +76,32 @@ In the **picker** (which uses `System.Text.Json`, not Newtonsoft) the equivalent
 
 ---
 
+## Trap #1b — Newtonsoft auto-converts an ISO-8601 string to a `Date` token, so a `Type == String` guard silently drops it
+
+**This is the trap that broke the wheel race countdown twice (1.10.13 looked fixed but wasn't; 1.10.14 actually fixed it).** When `JObject.Parse` reads `"Utc":"2026-06-14T13:03:28.026Z"`, Newtonsoft's default `DateParseHandling.DateTime` **parses the value into a `DateTime` immediately**, so the token's `Type` is **`JTokenType.Date`, not `JTokenType.String`**.
+
+```csharp
+// ☠️ WRONG — the ExtrapolatedClock "Utc" anchor is a Date token, so this guard
+//    is false, `utc` stays MinValue, Clock.IsValid is false, _lastClock is never
+//    cached, and the wheel countdown falls back forever to SessionEnd−playhead
+//    (~3 min off on a race).
+if (utcTok.Type == JTokenType.String) { utc = DateTime.Parse(utcTok.Value<string>()); }
+
+// ✅ RIGHT — read the value regardless of how Newtonsoft surfaced it (Date OR
+//    String). Value<DateTime>() preserves Kind=Utc (the trailing Z), matching
+//    the CarData playhead's basis so the subtraction is correct.
+if (utcTok != null && utcTok.Type != JTokenType.Null)
+    utc = utcTok.Value<DateTime>();
+```
+
+- This is verifiable: `JObject.Parse("{\"Utc\":\"...Z\"}")["Utc"].Type` returns `Date`, and `.Value<DateTime>()` returns the value with `Kind=Utc`.
+- A bare time string like `"01:59:59"` (the `Remaining` field) is **not** auto-converted — it stays `String` — which is exactly why only the `Utc` anchor was hit while `Remaining` parsed fine.
+- The **picker** never saw this because `System.Text.Json` does not auto-convert dates; `TryGetProperty("Utc").GetString()` returns the raw string.
+
+**Rule: never gate an MV timestamp read on `token.Type == JTokenType.String` in Newtonsoft. Read it with `Value<DateTime>()` and only null-check the token.** This is why the wheel and the picker disagreed by exactly the formation lap even with identical formulas.
+
+---
+
 ## Trap #2 — the playhead must be driver-INDEPENDENT and must NOT reset on driver switch
 
 The wheel clock died to `-:--:--` because it reused the wrong field as the playhead.
@@ -182,3 +208,4 @@ MV decodes CarData a beat ahead of the painted video, so the raw playhead leads 
 | 1.10.11 | Wheel still `-:--:--` (anchor produced empty) | Wheel used `ExtrapolatedClock` anchor, not `SessionEnd−playhead` | Port the picker's `SessionInfo` `SessionEnd−playhead` formula to the plugin |
 | 1.10.12 | Both clocks ~2s ahead of MV Live Timing | MV decode-buffer lead | `PlaybackLead = 2s` on both surfaces |
 | 1.10.13 | Race countdown ~4 min ahead of MV (ignored formation lap) | `SessionEnd − playhead` uses the *scheduled* end, blind to the pre-race delay | `ExtrapolatedClock` anchor (lights-out for a race) extrapolated to the playhead is now primary; `SessionEnd − playhead` demoted to fallback |
+| 1.10.14 | Wheel **still** ~3 min ahead after 1.10.13 (picker was correct) | `ExtrapolatedClockDecoder` guarded the `Utc` anchor with `Type == JTokenType.String`, but Newtonsoft surfaces it as a `Date` token → anchor `MinValue` → `Clock.IsValid` always false → `_lastClock` never cached → permanent `SessionEnd` fallback | Read the anchor with `Value<DateTime>()` regardless of token type (Trap #1b) |

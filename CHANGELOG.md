@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.14] — 2026-06-27
+
+### Fixed
+- **Wheel/dashboard race countdown was stuck ~3 minutes ahead of MV Live Timing (ignored the formation lap), even after 1.10.13.** The 1.10.13 fix correctly made the `ExtrapolatedClock` anchor the primary clock, but the plugin's `ExtrapolatedClockDecoder` never actually produced a valid anchor: it guarded the `Utc` field with `token.Type == JTokenType.String`, and **Newtonsoft's `JObject.Parse` auto-converts an ISO-8601 string into a `Date` token (`JTokenType.Date`), not a `String`.** So the guard always failed, the anchor stayed `MinValue`, `Clock.IsValid` was always `false`, `_lastClock` was never cached, and the wheel fell back permanently to `SessionEnd − playhead` — which is ~3 min fast on a race because the scheduled end knows nothing about the formation lap. (The picker header clock was unaffected: it parses with `System.Text.Json`, which does not auto-convert dates.) The decoder now reads the anchor with `Value<DateTime>()` regardless of whether Newtonsoft surfaced it as a `Date` or a `String` (preserving `Kind=Utc`), so the wheel countdown is now lights-out-anchored and matches MV Live Timing to the second, identically to the picker.
+
+### Docs
+- `docs/CLOCKS.md`: added the Newtonsoft auto-Date-conversion trap (a `Type == JTokenType.String` guard silently drops the `ExtrapolatedClock` `Utc` anchor) and recorded 1.10.14 in the regression history.
+
 ## [1.10.13] — 2026-06-27
 
 ### Fixed

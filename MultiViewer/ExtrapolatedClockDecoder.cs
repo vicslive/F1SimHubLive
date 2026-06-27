@@ -46,12 +46,22 @@ namespace F1SimHubLive.MultiViewer
 
                 DateTime utc = DateTime.MinValue;
                 var utcTok = root["Utc"];
-                if (utcTok != null && utcTok.Type == JTokenType.String)
+                if (utcTok != null && utcTok.Type != JTokenType.Null)
                 {
-                    var s = utcTok.Value<string>();
-                    if (!string.IsNullOrEmpty(s) && DateTime.TryParse(s, CultureInfo.InvariantCulture,
-                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dt))
-                        utc = dt;
+                    // CRITICAL: JObject.Parse auto-converts the ISO-8601 "Utc"
+                    // string into a *Date* token (JTokenType.Date), NOT a String.
+                    // A `Type == JTokenType.String` guard therefore silently drops
+                    // it, leaving the anchor at MinValue → Clock.IsValid == false →
+                    // the wheel countdown never caches a clock and permanently
+                    // falls back to the scheduled-end formula (~3 min off on a
+                    // race, because the scheduled end ignores the formation lap).
+                    // Value<DateTime>() reads the anchor correctly whether
+                    // Newtonsoft surfaced it as a Date or a String, and preserves
+                    // Kind=Utc (the trailing Z) — matching CarDataDecoder, so the
+                    // anchor and the playhead share the same UTC basis. Never
+                    // reinstate a Type==String guard here. See docs/CLOCKS.md.
+                    try { utc = utcTok.Value<DateTime>(); }
+                    catch { utc = DateTime.MinValue; }
                 }
 
                 bool extrapolating = false;

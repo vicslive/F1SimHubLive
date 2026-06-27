@@ -40,6 +40,10 @@ public sealed class SessionInfoClient : IDisposable
     private TimeSpan _lastRemaining = TimeSpan.Zero;
     private DateTime _lastRemainingFetchUtc = DateTime.MinValue;
     private bool _extrapolating;
+    // The clock's own anchor UTC (the simulated instant at which _lastRemaining
+    // was true). MV serves a static green anchor + Extrapolating flag, so the
+    // countdown must be derived from this against simulated (Heartbeat) time.
+    private DateTime? _clockAnchorUtc;
 
     // Last successful Heartbeat fetch — used to extrapolate the race clock
     // (which is SessionEndUtc - simulated-now).
@@ -121,6 +125,7 @@ public sealed class SessionInfoClient : IDisposable
         bool extrapolating = false;
         DateTime? sessionEndUtc = null;
         DateTime? heartbeatUtc = null;
+        DateTime? clockAnchorUtc = null;
 
         if (!string.IsNullOrEmpty(sessionInfoJson))
         {
@@ -191,6 +196,10 @@ public sealed class SessionInfoClient : IDisposable
                     remaining = rem;
                 if (root.TryGetProperty("Extrapolating", out var ex) &&
                     ex.ValueKind == JsonValueKind.True) extrapolating = true;
+                if (root.TryGetProperty("Utc", out var cu) &&
+                    DateTime.TryParse(cu.GetString(), CultureInfo.InvariantCulture,
+                        DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var ca))
+                    clockAnchorUtc = DateTime.SpecifyKind(ca, DateTimeKind.Utc);
             }
             catch { }
         }
@@ -217,6 +226,7 @@ public sealed class SessionInfoClient : IDisposable
             _lastRemaining = remaining.Value;
             _lastRemainingFetchUtc = DateTime.UtcNow;
             _extrapolating = extrapolating;
+            _clockAnchorUtc = clockAnchorUtc;  // may be null on some MV builds
         }
         if (sessionEndUtc.HasValue) _sessionEndUtc = sessionEndUtc;
         if (heartbeatUtc.HasValue)
@@ -273,8 +283,18 @@ public sealed class SessionInfoClient : IDisposable
         TimeSpan rem = _lastRemaining;
         if (_extrapolating)
         {
-            var elapsed = DateTime.UtcNow - _lastRemainingFetchUtc;
-            rem = _lastRemaining - elapsed;
+            // MV serves a static "green" anchor (Remaining at Utc) plus the
+            // Extrapolating flag — it does NOT decrement server-side. So derive
+            // the countdown from the anchor against *simulated* session time
+            // (the Heartbeat), not real wall-clock. Using wall-clock-since-poll
+            // froze the clock at the anchor (each 1 Hz poll re-seeded it), and a
+            // replayed/VOD session (sim-time ≠ now) never moved at all.
+            DateTime simNow = _lastHeartbeatUtc.HasValue
+                ? _lastHeartbeatUtc.Value + (DateTime.UtcNow - _lastHeartbeatFetchedAt)
+                : DateTime.UtcNow;
+            rem = _clockAnchorUtc.HasValue
+                ? _lastRemaining - (simNow - _clockAnchorUtc.Value)
+                : _lastRemaining - (DateTime.UtcNow - _lastRemainingFetchUtc);
             if (rem < TimeSpan.Zero) rem = TimeSpan.Zero;
         }
         _model.TimeText = FormatHms(rem);

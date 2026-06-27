@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.2] — 2026-06-26
+
+### Fixed
+- **Live/MultiViewer header session clock frozen for practice & qualifying.** MultiViewer (like F1's feed) serves `ExtrapolatedClock` as a *static* green anchor — `{Utc, Remaining, Extrapolating:true}` — and never decrements it server-side; the client is expected to extrapolate from the anchor `Utc`. The picker instead decremented `Remaining` by real wall-clock since the last poll, but re-seeded `Remaining` to the same anchor every 1 Hz poll, so the clock stuck at ~59:58 and, in a replayed/VOD session (whose simulated time ≠ real now), never moved at all. (Races were unaffected — they use the Heartbeat/`EndDate` path.) The non-race clock now extrapolates from the anchor `Utc` against *simulated* session time (the Heartbeat), so it ticks down in lockstep with MultiViewer's own header. `SessionInfoClient` now reads `ExtrapolatedClock.Utc`.
+
 ## [1.10.1] — 2026-06-26
 
 ### Fixed

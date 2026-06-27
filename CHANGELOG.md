@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.7] — 2026-06-26
+
+### Fixed
+- **Header clock was stuck near 59:58 on replays/VODs.** Measured live: for a replayed session MultiViewer serves a *static* `ExtrapolatedClock` anchor whose `Remaining` never decrements (held at 59:59 across 18 s while the `Heartbeat` advanced 15 s during playback). The previous logic re-seeded the countdown from that frozen `Remaining` every poll, so it could only hover at ~59:58. The practice/qualifying clock is now derived as `anchorRemaining − (sessionNow − anchorUtc)`, where `sessionNow` tracks the `Heartbeat` (the field that actually advances with playback) — exactly how MV's own UI counts the clock down in sync with the video. Wall-clock interpolation between the 1 Hz heartbeats is clamped to 1.5 s so a *paused* replay holds cleanly instead of running ahead and snapping back (the earlier flicker). Live sessions and older MV builds fall back to the prior Remaining-decrement logic.
+
 ## [1.10.6] — 2026-06-26
 
 ### Fixed

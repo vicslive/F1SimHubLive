@@ -48,6 +48,13 @@ public sealed class SessionInfoClient : IDisposable
     private DateTime _lastHeartbeatFetchedAt = DateTime.MinValue;
     private bool _isRaceSession;
 
+    // ExtrapolatedClock anchor timestamp (session-timeline UTC at which
+    // Remaining was measured). MV serves a STATIC anchor for VODs/replays —
+    // Remaining never decrements — so the practice/quali clock is derived as
+    // anchorRemaining - (Heartbeat - anchorUtc): the Heartbeat is the field
+    // that actually advances with playback, exactly how MV's own UI counts down.
+    private DateTime? _clockAnchorUtc;
+
     public SessionHeaderModel Model => _model;
 
     public SessionInfoClient(Dispatcher dispatcher, string baseUrl)
@@ -121,6 +128,7 @@ public sealed class SessionInfoClient : IDisposable
         bool extrapolating = false;
         DateTime? sessionEndUtc = null;
         DateTime? heartbeatUtc = null;
+        DateTime? clockAnchorUtc = null;
 
         if (!string.IsNullOrEmpty(sessionInfoJson))
         {
@@ -195,6 +203,10 @@ public sealed class SessionInfoClient : IDisposable
                     remaining = rem;
                 if (root.TryGetProperty("Extrapolating", out var ex) &&
                     ex.ValueKind == JsonValueKind.True) extrapolating = true;
+                if (root.TryGetProperty("Utc", out var cu) &&
+                    DateTime.TryParse(cu.GetString(), CultureInfo.InvariantCulture,
+                        DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var cutc))
+                    clockAnchorUtc = DateTime.SpecifyKind(cutc, DateTimeKind.Utc);
             }
             catch { }
         }
@@ -223,6 +235,7 @@ public sealed class SessionInfoClient : IDisposable
             _extrapolating = extrapolating;
         }
         if (sessionEndUtc.HasValue) _sessionEndUtc = sessionEndUtc;
+        if (clockAnchorUtc.HasValue) _clockAnchorUtc = clockAnchorUtc;
         if (heartbeatUtc.HasValue)
         {
             _lastHeartbeatUtc = heartbeatUtc;
@@ -268,12 +281,37 @@ public sealed class SessionInfoClient : IDisposable
             return;
         }
 
+        // Practice / Qualifying. MV serves a STATIC ExtrapolatedClock anchor
+        // for VODs (Remaining never decrements), so deriving the countdown from
+        // Remaining alone leaves it stuck near 59:58. The Heartbeat is the field
+        // that advances with playback, so compute the live remaining as
+        // anchorRemaining - (session-now - anchorUtc) — matching MV's own clock.
+        if (_clockAnchorUtc.HasValue && _lastHeartbeatUtc.HasValue &&
+            _lastRemainingFetchUtc != DateTime.MinValue)
+        {
+            // Interpolate the session clock between 1 Hz heartbeats using
+            // wall-clock, but CLAMP the interpolation so a paused replay
+            // (heartbeat frozen) can't run away and snap back — that was the
+            // flicker. During playback each poll refreshes the heartbeat, so the
+            // clamp never bites and the display ticks smoothly.
+            var sinceHb = DateTime.UtcNow - _lastHeartbeatFetchedAt;
+            if (sinceHb < TimeSpan.Zero) sinceHb = TimeSpan.Zero;
+            if (sinceHb > TimeSpan.FromSeconds(1.5)) sinceHb = TimeSpan.FromSeconds(1.5);
+            var sessionNow = _lastHeartbeatUtc.Value + sinceHb;
+            var rem2 = _lastRemaining - (sessionNow - _clockAnchorUtc.Value);
+            if (rem2 < TimeSpan.Zero) rem2 = TimeSpan.Zero;
+            _model.TimeText = FormatHms(rem2);
+            return;
+        }
+
         if (_lastRemainingFetchUtc == DateTime.MinValue)
         {
             _model.TimeText = "";
             return;
         }
 
+        // Fallback (older MV builds / live sessions that decrement Remaining
+        // server-side): tick the last Remaining down on wall-clock.
         TimeSpan rem = _lastRemaining;
         if (_extrapolating)
         {

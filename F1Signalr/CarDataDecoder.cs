@@ -69,6 +69,34 @@ namespace F1SimHubLive.F1Signalr
             return map;
         }
 
+        /// <summary>
+        /// Returns the freshest frame timestamp in a CarData payload, across
+        /// <b>all</b> cars (driver-independent). Used as the session-clock
+        /// playhead so the wheel clock keeps advancing even when the selected
+        /// driver has no frames in this batch and across driver switches.
+        /// Returns DateTime.MinValue when the payload has no usable entries.
+        /// </summary>
+        public static DateTime LatestFrameUtc(string json)
+        {
+            if (string.IsNullOrEmpty(json)) return DateTime.MinValue;
+            try
+            {
+                var root = JObject.Parse(json);
+                if (root["Entries"] is not JArray entries) return DateTime.MinValue;
+                DateTime latest = DateTime.MinValue;
+                foreach (var entry in entries)
+                {
+                    var utc = entry["Utc"]?.Value<DateTime>();
+                    if (utc.HasValue && utc.Value > latest) latest = utc.Value;
+                }
+                return latest;
+            }
+            catch
+            {
+                return DateTime.MinValue;
+            }
+        }
+
         public static IEnumerable<DriverSnapshot> ParseCarDataJson(string json, string driverNumber)
         {
             var root = JObject.Parse(json);

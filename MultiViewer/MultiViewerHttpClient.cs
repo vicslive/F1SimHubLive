@@ -23,6 +23,12 @@ namespace F1SimHubLive.MultiViewer
         private readonly CancellationTokenSource _cts = new();
 
         private DateTime _lastEmittedUtc = DateTime.MinValue;
+        // Driver-independent playback position for the session clock. Set on
+        // every CarData response from the freshest frame across ALL cars, and
+        // never reset on a driver switch, so the wheel clock keeps ticking even
+        // when the selected driver has no frames in a batch or just after a
+        // switch (unlike _lastEmittedUtc, which is per-driver and forward-only).
+        private DateTime _playheadUtc = DateTime.MinValue;
         // Latest valid ExtrapolatedClock anchor ({Utc, Remaining, Extrapolating}).
         // The session clock is this anchor extrapolated to the current CarData
         // playback position — no hard-coded duration, no race-start dependency.
@@ -245,9 +251,9 @@ namespace F1SimHubLive.MultiViewer
                     // CarData frame Utc, so it can't drift to a phantom +1h from
                     // a stale duration guess (the old 2h-default bug).
                     string remainingText = "";
-                    if (_lastClock.IsValid && _lastEmittedUtc != DateTime.MinValue)
+                    if (_lastClock.IsValid && _playheadUtc != DateTime.MinValue)
                     {
-                        var live = ExtrapolatedClockDecoder.LiveRemaining(_lastClock, _lastEmittedUtc);
+                        var live = ExtrapolatedClockDecoder.LiveRemaining(_lastClock, _playheadUtc);
                         remainingText = ExtrapolatedClockDecoder.Format(live);
                     }
 
@@ -329,6 +335,13 @@ namespace F1SimHubLive.MultiViewer
 
         private void HandleCarDataResponse(string json)
         {
+            // Advance the driver-independent session-clock playhead from the
+            // freshest frame across all cars. Tracks the replay position (incl.
+            // backward seeks) and survives driver switches, so the wheel clock
+            // never blanks just because the selected driver lacks frames here.
+            var playhead = CarDataDecoder.LatestFrameUtc(json);
+            if (playhead != DateTime.MinValue) _playheadUtc = playhead;
+
             int emitted = 0;
             foreach (var snap in CarDataDecoder.ParseCarDataJson(json, _driverNumber))
             {

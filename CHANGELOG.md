@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.10] — 2026-06-27
+
+### Fixed
+- **Wheel/dashboard session clock showed `-:--:--`.** The dashboard renders that placeholder whenever the plugin emits an empty `SessionTimeRemaining`. The wheel clock was extrapolating MV's `ExtrapolatedClock` anchor to `_lastEmittedUtc` — but that field is the *per-driver, forward-only* CarData dedup cursor, which is reset to `MinValue` on every driver switch and only advances for frames matching the currently-selected driver. So whenever the selected driver had no frames in a batch (or immediately after a driver switch) the playhead was `MinValue`, the clock string went empty, and the wheel fell back to `-:--:--`. The wheel clock now uses a dedicated **driver-independent playhead** (`_playheadUtc`, decoded from the freshest frame across all cars via `CarDataDecoder.LatestFrameUtc`) that is set on every CarData response and never reset on a driver switch — mirroring the picker header clock, which already worked for this exact reason.
+
 ## [1.10.9] — 2026-06-26
 
 ### Fixed

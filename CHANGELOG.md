@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.4] — 2026-06-26
+
+### Changed
+- **Reverted the live/MultiViewer header session clock to its pre-1.10.2 behaviour.** The 1.10.2/1.10.3 attempts to extrapolate the practice/quali clock from MV's `ExtrapolatedClock` anchor + `Heartbeat` made it worse for the common case: when MV's heartbeat is frozen (e.g. a finished session whose data isn't actively advancing) the smoothed display drifted then snapped, so it flickered and ran behind. Restored the simple, known-good logic (decrement MV's `Remaining` by elapsed wall-clock, re-seeded each poll) that ticks smoothly for genuinely live/streaming sessions. For a static/finished-session snapshot the header clock simply holds — read the on-screen video clock (or the Replay panel's own clock) in that case.
+
+### Added
+- **Header now shows the session number** — "Austrian GP: Practice 2" instead of just "Austrian GP: Practice". Reads MultiViewer's `SessionInfo.Name` (the full label: "Practice 2", "Sprint Qualifying", "Qualifying", "Race") for display, while still using `Type` for race detection.
+
 ## [1.10.3] — 2026-06-26
 
 ### Fixed

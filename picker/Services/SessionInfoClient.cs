@@ -40,18 +40,6 @@ public sealed class SessionInfoClient : IDisposable
     private TimeSpan _lastRemaining = TimeSpan.Zero;
     private DateTime _lastRemainingFetchUtc = DateTime.MinValue;
     private bool _extrapolating;
-    // The clock's own anchor UTC (the simulated instant at which _lastRemaining
-    // was true). MV serves a static green anchor + Extrapolating flag, so the
-    // countdown must be derived from this against simulated (Heartbeat) time.
-    private DateTime? _clockAnchorUtc;
-
-    // Smoothing baseline: the displayed countdown ticks down on real wall-clock
-    // from here and is only re-anchored to MV's (jittery, 1 Hz) truth when it
-    // drifts past ClockResyncThreshold — so a 1× session stays buttery-smooth
-    // and in lockstep with the video instead of sawtoothing on every poll.
-    private DateTime _smoothBaseReal = DateTime.MinValue;
-    private TimeSpan _smoothBaseRem;
-    private static readonly TimeSpan ClockResyncThreshold = TimeSpan.FromSeconds(2);
 
     // Last successful Heartbeat fetch — used to extrapolate the race clock
     // (which is SessionEndUtc - simulated-now).
@@ -126,14 +114,13 @@ public sealed class SessionInfoClient : IDisposable
         var heartbeatJson = t5.Result;
 
         // Parse everything off the UI thread, push results in one dispatcher hop.
-        string? raceName = null, countryCode3 = null, sessionType = null;
+        string? raceName = null, countryCode3 = null, sessionType = null, sessionLabel = null;
         string? statusCode = null, statusMessage = null;
         int? currentLap = null, totalLaps = null;
         TimeSpan? remaining = null;
         bool extrapolating = false;
         DateTime? sessionEndUtc = null;
         DateTime? heartbeatUtc = null;
-        DateTime? clockAnchorUtc = null;
 
         if (!string.IsNullOrEmpty(sessionInfoJson))
         {
@@ -148,8 +135,12 @@ public sealed class SessionInfoClient : IDisposable
                         c.TryGetProperty("Code", out var cc)) countryCode3 = cc.GetString();
                 }
                 if (root.TryGetProperty("Type", out var t)) sessionType = t.GetString();
-                if (string.IsNullOrEmpty(sessionType) && root.TryGetProperty("Name", out var sn))
-                    sessionType = sn.GetString();
+                // The root "Name" carries the full label MV shows — "Practice 2",
+                // "Sprint Qualifying", "Qualifying", "Race" — including the number
+                // that "Type" alone ("Practice") drops. Prefer it for display;
+                // keep "Type" for the race-detection logic below.
+                if (root.TryGetProperty("Name", out var sn2)) sessionLabel = sn2.GetString();
+                if (string.IsNullOrEmpty(sessionType)) sessionType = sessionLabel;
 
                 // EndDate is the session's local end time (ISO format,
                 // no offset); GmtOffset gives the local→UTC delta. We
@@ -204,10 +195,6 @@ public sealed class SessionInfoClient : IDisposable
                     remaining = rem;
                 if (root.TryGetProperty("Extrapolating", out var ex) &&
                     ex.ValueKind == JsonValueKind.True) extrapolating = true;
-                if (root.TryGetProperty("Utc", out var cu) &&
-                    DateTime.TryParse(cu.GetString(), CultureInfo.InvariantCulture,
-                        DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var ca))
-                    clockAnchorUtc = DateTime.SpecifyKind(ca, DateTimeKind.Utc);
             }
             catch { }
         }
@@ -234,7 +221,6 @@ public sealed class SessionInfoClient : IDisposable
             _lastRemaining = remaining.Value;
             _lastRemainingFetchUtc = DateTime.UtcNow;
             _extrapolating = extrapolating;
-            _clockAnchorUtc = clockAnchorUtc;  // may be null on some MV builds
         }
         if (sessionEndUtc.HasValue) _sessionEndUtc = sessionEndUtc;
         if (heartbeatUtc.HasValue)
@@ -249,7 +235,7 @@ public sealed class SessionInfoClient : IDisposable
 
         var (statusText, bg, fg) = MapTrackStatus(statusCode, statusMessage);
         ImageSource? flagImg = LoadFlagImage(countryCode3);
-        string headerName = BuildHeaderName(raceName, sessionType);
+        string headerName = BuildHeaderName(raceName, sessionLabel ?? sessionType);
         string lapText = BuildLapText(currentLap, totalLaps, isRace);
 
         _ = _dispatcher.BeginInvoke(new Action(() =>
@@ -278,7 +264,7 @@ public sealed class SessionInfoClient : IDisposable
         if (_isRaceSession && _sessionEndUtc.HasValue && _lastHeartbeatUtc.HasValue)
         {
             var simNow = _lastHeartbeatUtc.Value + (DateTime.UtcNow - _lastHeartbeatFetchedAt);
-            _model.TimeText = FormatHms(Smooth(_sessionEndUtc.Value - simNow));
+            _model.TimeText = FormatHms(_sessionEndUtc.Value - simNow);
             return;
         }
 
@@ -288,52 +274,14 @@ public sealed class SessionInfoClient : IDisposable
             return;
         }
 
-        if (!_extrapolating)
+        TimeSpan rem = _lastRemaining;
+        if (_extrapolating)
         {
-            // Pre-green / red-flag stoppage: the clock is frozen at the anchor
-            // value. Drop the smoothing baseline so it re-seeds cleanly on resume.
-            _smoothBaseReal = DateTime.MinValue;
-            var frozen = _lastRemaining < TimeSpan.Zero ? TimeSpan.Zero : _lastRemaining;
-            _model.TimeText = FormatHms(frozen);
-            return;
+            var elapsed = DateTime.UtcNow - _lastRemainingFetchUtc;
+            rem = _lastRemaining - elapsed;
+            if (rem < TimeSpan.Zero) rem = TimeSpan.Zero;
         }
-
-        // MV serves a static "green" anchor (Remaining at Utc) plus the
-        // Extrapolating flag — it does NOT decrement server-side. Derive MV's
-        // authoritative current value from the anchor against *simulated* session
-        // time (the Heartbeat), then smooth it so the display ticks evenly.
-        DateTime simNowP = _lastHeartbeatUtc.HasValue
-            ? _lastHeartbeatUtc.Value + (DateTime.UtcNow - _lastHeartbeatFetchedAt)
-            : DateTime.UtcNow;
-        TimeSpan mvRem = _clockAnchorUtc.HasValue
-            ? _lastRemaining - (simNowP - _clockAnchorUtc.Value)
-            : _lastRemaining - (DateTime.UtcNow - _lastRemainingFetchUtc);
-        _model.TimeText = FormatHms(Smooth(mvRem));
-    }
-
-    /// <summary>
-    /// Smooths a countdown that should advance 1:1 with real time. MV's
-    /// authoritative value arrives jittery at 1 Hz (network + a coarse heartbeat),
-    /// so running it directly sawtooths — "stuck a few seconds, then jump". We
-    /// instead tick down on smooth real wall-clock from a baseline and only
-    /// re-anchor to <paramref name="mvTruth"/> when we drift past
-    /// <see cref="ClockResyncThreshold"/> (a scrub / pause / red flag), keeping
-    /// the visible clock in lockstep with the 1× video between corrections.
-    /// </summary>
-    private TimeSpan Smooth(TimeSpan mvTruth)
-    {
-        var now = DateTime.UtcNow;
-        TimeSpan display = _smoothBaseReal == DateTime.MinValue
-            ? mvTruth
-            : _smoothBaseRem - (now - _smoothBaseReal);
-        if (_smoothBaseReal == DateTime.MinValue ||
-            (display - mvTruth).Duration() > ClockResyncThreshold)
-        {
-            _smoothBaseReal = now;
-            _smoothBaseRem = mvTruth;
-            display = mvTruth;
-        }
-        return display < TimeSpan.Zero ? TimeSpan.Zero : display;
+        _model.TimeText = FormatHms(rem);
     }
 
     private async Task<string?> Get(string path, CancellationToken ct)

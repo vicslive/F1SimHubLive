@@ -84,8 +84,14 @@ namespace F1SimHubLive.MultiViewer
         public static string Format(TimeSpan ts)
         {
             if (ts < TimeSpan.Zero) ts = TimeSpan.Zero;
-            return string.Format(CultureInfo.InvariantCulture, "{0}:{1:D2}:{2:D2}",
-                (int)ts.TotalHours, ts.Minutes, ts.Seconds);
+            // Races run ~2h so show H:MM:SS; practice / qualifying are always
+            // under an hour, so drop the leading "0:" and show MM:SS to match
+            // F1 TV, the video, and MV's live timing.
+            if (ts.TotalHours >= 1)
+                return string.Format(CultureInfo.InvariantCulture, "{0}:{1:D2}:{2:D2}",
+                    (int)ts.TotalHours, ts.Minutes, ts.Seconds);
+            return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}",
+                ts.Minutes, ts.Seconds);
         }
     }
 }

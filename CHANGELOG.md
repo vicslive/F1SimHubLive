@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.8] — 2026-06-26
+
+### Fixed
+- **Header clock now tracks the video frame-for-frame (no more stuck/lock-jump/flicker).** The 1.10.7 heartbeat-anchor approach still misbehaved because MultiViewer's `Heartbeat` only ticks every ~10 s on a replay, so the clock locked then jumped each time it caught up. The picker now drives the header countdown from the **CarData playhead** — the session-timeline UTC of the freshest telemetry frame, which the wheel dashboard already uses as its "now". The countdown is simply `SessionEndUtc − playhead`: it advances at 1× while the video plays, freezes the instant playback pauses (frames stop arriving), and jumps on a seek (frame UTC jumps, including backward seeks). This is the same proven signal the plugin's wheel clock uses, so the two clocks and the video now stay in lockstep. The `/api/v1/players` `isPaused` polling and the self-running session clock are retired in favour of this single source of truth.
+- **Wheel/dashboard clock dropped the spurious hour for sub-60-minute sessions.** `ExtrapolatedClockDecoder.Format` always emitted `H:MM:SS` (e.g. `0:45:18`); practice and qualifying are always under an hour, so it now shows `MM:SS` (`45:18`) to match F1 TV, the video, and MV's live timing. Races (~2 h) still show `H:MM:SS`.
+
 ## [1.10.7] — 2026-06-26
 
 ### Fixed

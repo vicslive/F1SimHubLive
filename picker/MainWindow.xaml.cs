@@ -101,6 +101,11 @@ public partial class MainWindow : Window
         _sessionInfoClient = new SessionInfoClient(Dispatcher, _mvUrl);
         SessionHeaderBar.DataContext = _sessionInfoClient.Model;
         _telemetry = new PickerTelemetryClient(_mvUrl);
+        // Feed the live CarData playhead into the session header so its clock
+        // counts down in lockstep with the video (advances while playing,
+        // freezes on pause, jumps on seek) instead of guessing from MV's static
+        // ExtrapolatedClock anchor or the bursty Heartbeat.
+        _sessionInfoClient.PlayheadProvider = () => _telemetry.LatestCarDataUtc;
 
         SettingsPathText.Text = _settingsPath;
         VersionText.Text = $"v{GetDisplayVersion()}";

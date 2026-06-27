@@ -65,6 +65,7 @@ internal sealed class PickerTelemetryClient : IDisposable
     private volatile string _driverNumber = "";
     private CancellationTokenSource? _cts;
     private DateTime _lastEmittedUtc = DateTime.MinValue;
+    private DateTime _latestFrameUtc = DateTime.MinValue;
     private int _parseFailureCount;
     private bool _rawDumpWritten;
 
@@ -108,6 +109,15 @@ internal sealed class PickerTelemetryClient : IDisposable
 
     /// <summary>UTC of the most recent CarData entry we parsed successfully. MinValue if never.</summary>
     public DateTime LastSuccessfulParseUtc { get; private set; } = DateTime.MinValue;
+
+    /// <summary>
+    /// Session-timeline UTC of the freshest CarData frame we parsed, updated on
+    /// EVERY successful parse regardless of direction (unlike <c>_lastEmittedUtc</c>,
+    /// which is forward-only for the wheel dedup). This is the video playhead:
+    /// it advances at 1x while playing, freezes when paused (no new frames) and
+    /// jumps on a seek. The session header uses it as "now". MinValue if never.
+    /// </summary>
+    public DateTime LatestCarDataUtc => _latestFrameUtc;
 
     /// <summary>Message from the first parse error since startup, or null if no failures yet.</summary>
     public string? LastParseErrorMessage { get; private set; }
@@ -189,6 +199,10 @@ internal sealed class PickerTelemetryClient : IDisposable
                 // AND the selected driver's RPM/gear/throttle convenience values.
                 if (TryParseLatestNJson(json, driver, out double rpm, out int gear, out double throttle, out DateTime utc, out var speeds, out var inputsBatch, out string? parseError))
                 {
+                    // Publish the playhead on every parse — including backward
+                    // seeks — so the session-header countdown tracks the video.
+                    if (utc != DateTime.MinValue) _latestFrameUtc = utc;
+
                     if (speeds.Count > 0)
                     {
                         OnSpeedsBatch?.Invoke(speeds);

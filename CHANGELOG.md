@@ -6,6 +6,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.9] — 2026-06-26
+
+### Fixed
+- **Picker header clock showed `0:00`.** The CarData playhead the 1.10.8 clock relies on was read via `DateTime.TryParse(token.ToString())`, but Newtonsoft's `JToken.ToString()` drops the `Z` from MV's UTC timestamps — `TryParse` then returns `Kind=Unspecified` and the subsequent `ToUniversalTime()` re-applied the local offset (e.g. +5 h), pushing the playhead *past* session end so `SessionEnd − playhead` clamped to `0:00`. (The old code only used this value for monotonic frame dedup, so the bug was invisible until 1.10.8 made it an absolute time.) The frame UTC is now read with `token.Value<DateTime>()`, which preserves `Kind=Utc`, so the header counts down correctly in lockstep with the video.
+- **Wheel/dashboard clock showed a phantom leading hour (e.g. `1:34:xx` for a 35-minute practice).** The plugin derived remaining as `sessionDuration − (CarDataUtc − raceStart)` with `sessionDuration` defaulting to **2 h**; whenever that default wasn't overwritten by a live `ExtrapolatedClock.Remaining`, the minutes/seconds were right but an extra hour was tacked on. The wheel clock now extrapolates MV's self-consistent `ExtrapolatedClock` anchor (`Remaining` measured at its own `Utc`) to the current CarData playback position — no hard-coded duration and no race-start dependency — so it can't gain a phantom hour. Combined with the 1.10.8 `MM:SS` formatting, sub-60-minute sessions now read e.g. `34:12`.
+
 ## [1.10.8] — 2026-06-26
 
 ### Fixed

@@ -375,11 +375,27 @@ internal sealed class PickerTelemetryClient : IDisposable
                 throttle = sel.Throttle;
             }
 
+            // Read the frame UTC. MV always sends a "...Z" timestamp, so read it
+            // as the UTC instant Newtonsoft already parsed (Kind=Utc). Do NOT
+            // round-trip through utcTok.ToString() + DateTime.TryParse: Newtonsoft's
+            // ToString() drops the Z, TryParse yields Kind=Unspecified, and the
+            // subsequent ToUniversalTime() then double-applies the local offset
+            // (e.g. +5 h), which silently shifts the playhead past session end.
             var utcTok = entry["Utc"];
-            if (utcTok != null && DateTime.TryParse(utcTok.ToString(), out var parsedUtc))
-                utc = parsedUtc.ToUniversalTime();
+            if (utcTok != null && (utcTok.Type == JTokenType.Date || utcTok.Type == JTokenType.String))
+            {
+                var dt = utcTok.Value<DateTime>();
+                utc = dt.Kind switch
+                {
+                    DateTimeKind.Utc => dt,
+                    DateTimeKind.Local => dt.ToUniversalTime(),
+                    _ => DateTime.SpecifyKind(dt, DateTimeKind.Utc),
+                };
+            }
             else
+            {
                 utc = DateTime.UtcNow;
+            }
 
             return true;
         }

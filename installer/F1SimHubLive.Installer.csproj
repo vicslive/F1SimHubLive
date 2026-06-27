@@ -9,10 +9,10 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>F1SimHubLive-Installer</AssemblyName>
     <RootNamespace>F1SimHubLive.Installer</RootNamespace>
-    <Version>1.10.8</Version>
-    <AssemblyVersion>1.10.8.0</AssemblyVersion>
-    <FileVersion>1.10.8.0</FileVersion>
-    <InformationalVersion>1.10.8</InformationalVersion>
+    <Version>1.10.9</Version>
+    <AssemblyVersion>1.10.9.0</AssemblyVersion>
+    <FileVersion>1.10.9.0</FileVersion>
+    <InformationalVersion>1.10.9</InformationalVersion>
     <AssemblyTitle>F1SimHubLive Installer</AssemblyTitle>
     <Product>F1SimHubLive</Product>
     <Company>vicslive</Company>

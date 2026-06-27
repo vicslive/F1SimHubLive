@@ -23,8 +23,10 @@ namespace F1SimHubLive.MultiViewer
         private readonly CancellationTokenSource _cts = new();
 
         private DateTime _lastEmittedUtc = DateTime.MinValue;
-        private DateTime _raceStartUtc = DateTime.MinValue;
-        private TimeSpan _sessionDuration = TimeSpan.FromHours(2);
+        // Latest valid ExtrapolatedClock anchor ({Utc, Remaining, Extrapolating}).
+        // The session clock is this anchor extrapolated to the current CarData
+        // playback position — no hard-coded duration, no race-start dependency.
+        private ExtrapolatedClockDecoder.Clock _lastClock;
         private int _totalDrivers;
         private bool _driverInfoEmitted;
         private bool _everConnected;
@@ -187,7 +189,9 @@ namespace F1SimHubLive.MultiViewer
                     string lapJson = await SafeGetString(lapTask, "LapCount").ConfigureAwait(false);
                     string statusJson = await SafeGetString(statusTask, "TrackStatus").ConfigureAwait(false);
                     string clockJson = await SafeGetString(clockTask, "ExtrapolatedClock").ConfigureAwait(false);
-                    string sessionJson = await SafeGetString(sessionTask, "SessionData").ConfigureAwait(false);
+                    // SessionData is still drained so the request completes, but
+                    // the wheel clock no longer needs the race-start time from it.
+                    _ = await SafeGetString(sessionTask, "SessionData").ConfigureAwait(false);
 
                     // DriverList: fetched once (field size doesn't change mid-race). Retry each
                     // iteration until we get a non-zero count, and until we resolve identity
@@ -225,35 +229,25 @@ namespace F1SimHubLive.MultiViewer
                     var (currentLap, totalLaps) = LapCountDecoder.Parse(lapJson);
                     var (code, msg) = TrackStatusDecoder.Parse(statusJson);
 
-                    // Cache race start UTC from SessionData.StatusSeries (entry with SessionStatus="Started").
-                    // In live racing this is "lights out"; in replay it's the recorded moment, which
-                    // pairs correctly with CarData Utc to compute the live replay elapsed time.
-                    if (_raceStartUtc == DateTime.MinValue && sessionJson.Length > 0)
-                    {
-                        var rs = SessionDataDecoder.ParseRaceStartUtc(sessionJson);
-                        if (rs != DateTime.MinValue) _raceStartUtc = rs;
-                    }
-
-                    // Cache session duration limit from the first ExtrapolatedClock baseline we see
-                    // (Remaining at race start = the regulatory time limit; F1 race = ~2h).
+                    // Cache the latest valid ExtrapolatedClock anchor. MV serves
+                    // {Utc, Remaining} as a self-consistent baseline ("at Utc,
+                    // Remaining was left") — static during replays, decrementing
+                    // live — so it never needs a hard-coded session length.
                     if (clockJson.Length > 0)
                     {
                         var clock = ExtrapolatedClockDecoder.Parse(clockJson);
-                        if (clock.IsValid && clock.Remaining > TimeSpan.Zero &&
-                            clock.Remaining < TimeSpan.FromHours(4))
-                        {
-                            _sessionDuration = clock.Remaining;
-                        }
+                        if (clock.IsValid) _lastClock = clock;
                     }
 
-                    // Live remaining = sessionDuration - (replayNow - raceStart). Use the freshest
-                    // CarData Utc as "now" since ExtrapolatedClock.Utc is frozen during MV replays.
+                    // Session remaining = anchor Remaining extrapolated to the
+                    // current CarData playback position (the replay "now"). This
+                    // uses only the ExtrapolatedClock's own Utc baseline + the
+                    // CarData frame Utc, so it can't drift to a phantom +1h from
+                    // a stale duration guess (the old 2h-default bug).
                     string remainingText = "";
-                    if (_raceStartUtc != DateTime.MinValue && _lastEmittedUtc > _raceStartUtc)
+                    if (_lastClock.IsValid && _lastEmittedUtc != DateTime.MinValue)
                     {
-                        var elapsed = _lastEmittedUtc - _raceStartUtc;
-                        var live = _sessionDuration - elapsed;
-                        if (live < TimeSpan.Zero) live = TimeSpan.Zero;
+                        var live = ExtrapolatedClockDecoder.LiveRemaining(_lastClock, _lastEmittedUtc);
                         remainingText = ExtrapolatedClockDecoder.Format(live);
                     }
 

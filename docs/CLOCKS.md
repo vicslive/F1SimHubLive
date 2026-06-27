@@ -7,6 +7,8 @@ F1SimHubLive renders the **session time remaining** on two independent surfaces:
 | **Picker header clock** | `F1SimHubLive-Picker.exe` (WPF) | `picker/Services/SessionInfoClient.cs` | `SessionHeaderModel.TimeText` |
 | **Wheel / dashboard countdown** | SimHub plugin → `F1RaceSim_GSIFPEV2` dashboard | `MultiViewer/MultiViewerHttpClient.cs` | `F1SimHubLivePlugin.SessionTimeRemaining` |
 
+> **Related contracts:** sector/lap-time **colour** coding lives in [SECTORS.md](SECTORS.md); the **replay** source + driver-picker behaviour lives in [REPLAY.md](REPLAY.md). This doc is countdown/clock only.
+
 These two surfaces are **separate codebases that must stay behaviourally identical.** They were repeatedly broken by the same handful of traps during the 1.10.7–1.10.14 bug-fixing run. This document is the contract that keeps them working. **If you change one clock, change the other to match, and re-read the invariants below.**
 
 > **Verification status (as of 1.10.14):** matched MV Live Timing to ~1s on **replayed practice**, **replayed race** (Barcelona, formation lap correctly accounted for), and **replayed full qualifying** (Barcelona Q1→Q2→Q3, all segment re-anchors + between-segment freezes captured — see "Qualifying & sprint" below for the captured timeline). **Live sessions are not yet verified** — first live test is qualifying. See "Live vs replay" for what to watch.

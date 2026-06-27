@@ -9,6 +9,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 ### Docs
 - **Verified the full qualifying clock behaviour (Q1→Q2→Q3) on a Barcelona replay** and recorded the captured timeline in [`docs/CLOCKS.md`](docs/CLOCKS.md). Confirmed MV uses a **two-phase per-segment re-anchor** (stages the next segment frozen with `Extrapolating=false`, then flips to `true` at green) and that both surfaces follow each reset to ~1s with no segment-detection code, while the `SessionEnd − playhead` fallback was 40–58 min wrong through Q1/Q2. Updated the verification-status banner (practice + race + full qualifying now replay-verified; live still pending).
 
+- **Consolidated two scattered sets of hard-won learnings into dedicated contract docs** (same "read before you touch this" style as `docs/CLOCKS.md`):
+  - [`docs/SECTORS.md`](docs/SECTORS.md) — the sector/lap-time colour-coding contract: the four separate colour systems and their sources, the canonical MultiViewer Material UI palette mined from `app.asar`, the segment status codes, and the traps (purple owned by MV `TimingStats` Position 1, last-lap colour derived by value, quali current-segment-vs-all-quali BEST) with invariants + regression history.
+  - [`docs/REPLAY.md`](docs/REPLAY.md) — the replay source & driver-picker contract: the three `ITelemetrySource` sources, the replay virtual clock + wall-clock stamping, the CarData+DriverList-only topic set (timing blank by design), the `{ get; init; }` identity-freeze trap, the driver-independent playhead, row-click hit-testing, and the picker↔plugin JSON command channel.
+  - Linked both from the README companion-docs index.
+
 ### Added
 - `scripts/Capture-ClockTimeline.ps1` — a standalone poller that samples MV's `ExtrapolatedClock` + freshest CarData playhead every few seconds and computes our countdown exactly as the plugin/picker do (primary anchor-extrapolation **and** the SessionEnd fallback), flagging `Extrapolating=false` segment gaps. Lets us validate the clock against MV Live Timing across session phases **without SimHub running**, and is the tool to re-run for the first live-qualifying verification.
 ## [1.10.14] — 2026-06-27

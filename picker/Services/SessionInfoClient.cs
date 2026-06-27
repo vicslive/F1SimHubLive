@@ -45,6 +45,14 @@ public sealed class SessionInfoClient : IDisposable
     // countdown must be derived from this against simulated (Heartbeat) time.
     private DateTime? _clockAnchorUtc;
 
+    // Smoothing baseline: the displayed countdown ticks down on real wall-clock
+    // from here and is only re-anchored to MV's (jittery, 1 Hz) truth when it
+    // drifts past ClockResyncThreshold — so a 1× session stays buttery-smooth
+    // and in lockstep with the video instead of sawtoothing on every poll.
+    private DateTime _smoothBaseReal = DateTime.MinValue;
+    private TimeSpan _smoothBaseRem;
+    private static readonly TimeSpan ClockResyncThreshold = TimeSpan.FromSeconds(2);
+
     // Last successful Heartbeat fetch — used to extrapolate the race clock
     // (which is SessionEndUtc - simulated-now).
     private DateTime? _sessionEndUtc;
@@ -270,7 +278,7 @@ public sealed class SessionInfoClient : IDisposable
         if (_isRaceSession && _sessionEndUtc.HasValue && _lastHeartbeatUtc.HasValue)
         {
             var simNow = _lastHeartbeatUtc.Value + (DateTime.UtcNow - _lastHeartbeatFetchedAt);
-            _model.TimeText = FormatHms(_sessionEndUtc.Value - simNow);
+            _model.TimeText = FormatHms(Smooth(_sessionEndUtc.Value - simNow));
             return;
         }
 
@@ -280,24 +288,52 @@ public sealed class SessionInfoClient : IDisposable
             return;
         }
 
-        TimeSpan rem = _lastRemaining;
-        if (_extrapolating)
+        if (!_extrapolating)
         {
-            // MV serves a static "green" anchor (Remaining at Utc) plus the
-            // Extrapolating flag — it does NOT decrement server-side. So derive
-            // the countdown from the anchor against *simulated* session time
-            // (the Heartbeat), not real wall-clock. Using wall-clock-since-poll
-            // froze the clock at the anchor (each 1 Hz poll re-seeded it), and a
-            // replayed/VOD session (sim-time ≠ now) never moved at all.
-            DateTime simNow = _lastHeartbeatUtc.HasValue
-                ? _lastHeartbeatUtc.Value + (DateTime.UtcNow - _lastHeartbeatFetchedAt)
-                : DateTime.UtcNow;
-            rem = _clockAnchorUtc.HasValue
-                ? _lastRemaining - (simNow - _clockAnchorUtc.Value)
-                : _lastRemaining - (DateTime.UtcNow - _lastRemainingFetchUtc);
-            if (rem < TimeSpan.Zero) rem = TimeSpan.Zero;
+            // Pre-green / red-flag stoppage: the clock is frozen at the anchor
+            // value. Drop the smoothing baseline so it re-seeds cleanly on resume.
+            _smoothBaseReal = DateTime.MinValue;
+            var frozen = _lastRemaining < TimeSpan.Zero ? TimeSpan.Zero : _lastRemaining;
+            _model.TimeText = FormatHms(frozen);
+            return;
         }
-        _model.TimeText = FormatHms(rem);
+
+        // MV serves a static "green" anchor (Remaining at Utc) plus the
+        // Extrapolating flag — it does NOT decrement server-side. Derive MV's
+        // authoritative current value from the anchor against *simulated* session
+        // time (the Heartbeat), then smooth it so the display ticks evenly.
+        DateTime simNowP = _lastHeartbeatUtc.HasValue
+            ? _lastHeartbeatUtc.Value + (DateTime.UtcNow - _lastHeartbeatFetchedAt)
+            : DateTime.UtcNow;
+        TimeSpan mvRem = _clockAnchorUtc.HasValue
+            ? _lastRemaining - (simNowP - _clockAnchorUtc.Value)
+            : _lastRemaining - (DateTime.UtcNow - _lastRemainingFetchUtc);
+        _model.TimeText = FormatHms(Smooth(mvRem));
+    }
+
+    /// <summary>
+    /// Smooths a countdown that should advance 1:1 with real time. MV's
+    /// authoritative value arrives jittery at 1 Hz (network + a coarse heartbeat),
+    /// so running it directly sawtooths — "stuck a few seconds, then jump". We
+    /// instead tick down on smooth real wall-clock from a baseline and only
+    /// re-anchor to <paramref name="mvTruth"/> when we drift past
+    /// <see cref="ClockResyncThreshold"/> (a scrub / pause / red flag), keeping
+    /// the visible clock in lockstep with the 1× video between corrections.
+    /// </summary>
+    private TimeSpan Smooth(TimeSpan mvTruth)
+    {
+        var now = DateTime.UtcNow;
+        TimeSpan display = _smoothBaseReal == DateTime.MinValue
+            ? mvTruth
+            : _smoothBaseRem - (now - _smoothBaseReal);
+        if (_smoothBaseReal == DateTime.MinValue ||
+            (display - mvTruth).Duration() > ClockResyncThreshold)
+        {
+            _smoothBaseReal = now;
+            _smoothBaseRem = mvTruth;
+            display = mvTruth;
+        }
+        return display < TimeSpan.Zero ? TimeSpan.Zero : display;
     }
 
     private async Task<string?> Get(string path, CancellationToken ct)

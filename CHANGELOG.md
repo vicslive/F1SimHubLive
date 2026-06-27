@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.3] — 2026-06-26
+
+### Fixed
+- **Live/MultiViewer header clock sawtoothed ("stuck a few seconds, then jumps").** 1.10.2 correctly extrapolated the practice/quali clock from MV's anchor, but recomputed it straight from MV's truth every 250 ms tick — and that truth is re-seeded from MV's jittery 1 Hz `Heartbeat` each poll, so the display stuck then snapped instead of ticking evenly. The countdown now runs on smooth real wall-clock from a baseline and only re-anchors to MV when it drifts past 2 s (a scrub / pause / red-flag stoppage), so it decrements perfectly in lockstep with the 1× video and MultiViewer's own clock. The same smoothing now also covers the race clock.
+
 ## [1.10.2] — 2026-06-26
 
 ### Fixed

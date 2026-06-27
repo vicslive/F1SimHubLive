@@ -6,6 +6,22 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+## [1.10.13] — 2026-06-27
+
+### Fixed
+- **Race countdown was ~4 minutes ahead of MV Live Timing (ignored the formation lap).** Both clocks computed `SessionEndUtc − playhead` against the *scheduled* session end, which knows nothing about the pre-race delay — formation lap, grid forming, aborted starts — so a race countdown ran several minutes fast versus MV's own panel. The session/race countdown is now driven by MV's **`ExtrapolatedClock`** anchor extrapolated to the playback position: `Remaining − (playhead − anchorUtc)` while extrapolating, frozen `Remaining` otherwise. For a race MV pushes the anchor `Utc` to **lights-out** the instant the red lights go off, so this automatically bakes in the formation lap + pre-race delay and matches MV Live Timing to the second; for practice/qualifying the anchor is the session start, so the same formula stays correct. `SessionEndUtc − playhead` is now a **fallback** only, used until the `ExtrapolatedClock` anchor arrives. Applied identically to the picker header clock and the wheel/dashboard countdown.
+
+### Docs
+- Updated [`docs/CLOCKS.md`](docs/CLOCKS.md): the canonical formula is now the `ExtrapolatedClock` extrapolation (lights-out-anchored for races), with `SessionEnd − playhead` demoted to a fallback; documents the lights-out anchor behaviour and adds 1.10.13 to the regression history.
+
+## [1.10.12] — 2026-06-27
+
+### Changed
+- **Both clocks now compensate MV's ~2s playback-buffer lead.** MV hands over the freshest CarData frame a beat ahead of the frame it paints on screen (and ahead of its own Live Timing panel), so the raw playhead led MV's on-screen clock by ~2s. A shared `PlaybackLead = 2s` constant is now subtracted from the playhead on both the picker header clock and the wheel/dashboard countdown, lining both up with MV Live Timing. The constant is duplicated in both processes on purpose and must be kept equal.
+
+### Docs
+- Added [`docs/CLOCKS.md`](docs/CLOCKS.md) — the definitive reference for the session clock/countdown: the single formula both surfaces share, the three MV time signals and which to trust, the four traps behind the 1.10.7–1.10.12 regressions (Newtonsoft `Z`-drop +5h, driver-reset playhead, `-:--:--` placeholder, hour-format), the DO-NOT-BREAK invariants, a file/line map, and the full regression history. Linked from the README docs index.
+
 ## [1.10.11] — 2026-06-27
 
 ### Changed

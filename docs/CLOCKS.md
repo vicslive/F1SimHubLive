@@ -1,0 +1,184 @@
+# Clocks & countdowns — how the session timer works (read before touching it)
+
+F1SimHubLive renders the **session time remaining** on two independent surfaces:
+
+| Surface | Process | Owner file | Property/field |
+|---|---|---|---|
+| **Picker header clock** | `F1SimHubLive-Picker.exe` (WPF) | `picker/Services/SessionInfoClient.cs` | `SessionHeaderModel.TimeText` |
+| **Wheel / dashboard countdown** | SimHub plugin → `F1RaceSim_GSIFPEV2` dashboard | `MultiViewer/MultiViewerHttpClient.cs` | `F1SimHubLivePlugin.SessionTimeRemaining` |
+
+These two surfaces are **separate codebases that must stay behaviourally identical.** They were repeatedly broken by the same handful of traps during the 1.10.7–1.10.12 bug-fixing run. This document is the contract that keeps them working. **If you change one clock, change the other to match, and re-read the invariants below.**
+
+---
+
+## The one true formula
+
+```
+remaining = ExtrapolatedClock.Remaining − ((playhead − PlaybackLead) − ExtrapolatedClock.Utc)
+            when Extrapolating == true
+remaining = ExtrapolatedClock.Remaining          (frozen, e.g. formation lap)
+            when Extrapolating == false
+```
+
+- **`ExtrapolatedClock`** — MV's official session/race clock, a self-consistent `{Utc, Remaining}` anchor ("at `Utc`, `Remaining` was left"). For a **race** MV pushes the anchor `Utc` to **lights-out** the instant the red lights go off, so the anchor already bakes in the formation lap + grid forming + any aborted-start delay. For **practice/qualifying** the anchor is the session start. Extrapolating the anchor to the playback position therefore matches MV Live Timing **to the second** for every session type, with no special-casing.
+- **`playhead`** — the UTC timestamp of the **freshest CarData frame**. The only MV signal that tracks the video frame-for-frame (advances at 1× while playing, freezes on pause, jumps on seek).
+- **`PlaybackLead`** — a constant `2s` that compensates MV's decode buffer (MV hands over the freshest CarData frame ~2s *ahead* of the frame it paints on screen and ahead of its own Live Timing panel).
+
+Both surfaces implement exactly this as the **primary** path.
+
+### Fallback: `SessionEndUtc − playhead`
+
+```
+remaining = SessionEndUtc − (playhead − PlaybackLead)
+```
+
+Used **only** until the `ExtrapolatedClock` anchor is available. `SessionEndUtc` is the *scheduled* end (`SessionInfo` `EndDate` + `GmtOffset`); it knows nothing about the pre-race delay, so during a **race start it reads several minutes ahead** of MV Live Timing (the ~4-minute formation-lap error that 1.10.13 fixed). Correct enough as a stopgap for practice, wrong for a race — never promote it back to primary.
+
+---
+
+## Why this formula, and the signals we DON'T trust
+
+MV exposes three time-ish signals:
+
+| Signal | Endpoint | Behaviour | Verdict |
+|---|---|---|---|
+| `ExtrapolatedClock` | `/ExtrapolatedClock` | `{Utc, Remaining, Extrapolating}` anchor. On a race `Utc` is **lights-out**; while paused/pre-start `Extrapolating==false` and `Remaining` is frozen | ✅ **Official clock — extrapolate the anchor to the playhead.** Never read `Remaining` as "now" without extrapolating. |
+| **CarData frame `Utc`** | `/CarData` | Advances 1× while playing, freezes on pause, jumps on seek | ✅ **This is the playhead** we extrapolate the anchor to. |
+| `Heartbeat` | `/Heartbeat` | Wall-clock `Utc`, updates only **every ~10s** | ⚠️ Causes lock-then-jump if used as the clock. Race fallback only. |
+
+### Things that caused real regressions (do not reintroduce)
+
+1. **`ExtrapolatedClock.Remaining` displayed raw (un-extrapolated)** → stuck at `59:58` on replays (the anchor is frozen). Always extrapolate it to the playhead. *(pre-1.10.7)*
+2. **`Heartbeat` as the clock** → ticks, freezes for ~10s, then jumps to catch up. *(1.10.7)*
+3. **A hard-coded session duration** (`_sessionDuration = TimeSpan.FromHours(2)`) → phantom leading `1:` hour on sub-hour practice sessions when the default wasn't overwritten. *(≤1.10.8)* **There is no session-length constant anymore. Do not add one.**
+4. **`SessionEnd − playhead` as the primary race countdown** → ~4 minutes ahead of MV because the scheduled end ignores the formation lap. *(1.10.11–1.10.12)* It's a fallback only.
+
+---
+
+## Trap #1 — Newtonsoft drops the `Z`, then `.ToUniversalTime()` adds +5h
+
+**This is the single most dangerous trap in the whole clock path.** It silently shifts the playhead by the local UTC offset and clamps the countdown to `0:00`.
+
+```csharp
+// ☠️ WRONG — JToken.ToString() renders "6/26/2026 3:26:15 PM" (no Z).
+//    DateTime.TryParse → Kind=Unspecified → .ToUniversalTime() re-applies
+//    the local offset (+5h on a CDT box) → playhead lands past SessionEnd
+//    → remaining clamps to 0:00.
+DateTime utc = DateTime.Parse(token.ToString()).ToUniversalTime();
+
+// ✅ RIGHT — Value<DateTime>() preserves Kind=Utc directly.
+DateTime utc = token.Value<DateTime>();
+```
+
+**Rule: every MV UTC timestamp read through Newtonsoft must use `token.Value<DateTime>()`, never `DateTime.Parse(token.ToString())`.** This applies to CarData `Utc` (`F1Signalr/CarDataDecoder.cs`) and anywhere else a frame/anchor time is parsed.
+
+In the **picker** (which uses `System.Text.Json`, not Newtonsoft) the equivalent guard is `DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal` plus `DateTime.SpecifyKind(..., Utc)` — see `SessionInfoClient.cs`.
+
+---
+
+## Trap #2 — the playhead must be driver-INDEPENDENT and must NOT reset on driver switch
+
+The wheel clock died to `-:--:--` because it reused the wrong field as the playhead.
+
+- `_lastEmittedUtc` is the **per-driver, forward-only CarData dedup cursor.** It only advances for frames matching the *selected* driver, and **`SetDriverNumber` resets it to `DateTime.MinValue`.** When the selected driver had no frames in a batch — or right after a driver switch — it was `MinValue`, the countdown string went empty, and the dashboard fell back to its placeholder. *(1.10.9–1.10.10)*
+- `_playheadUtc` is the **driver-independent** playhead: set on **every** CarData response from the freshest frame **across all cars** (`CarDataDecoder.LatestFrameUtc`), and **never reset on a driver switch.** *(1.10.11)*
+
+**Rule: the clock playhead is `_playheadUtc` (plugin) / `LatestCarDataUtc` (picker). It is independent of the selected driver and is never reset when the driver changes.** Switching drivers must not blank or jump the clock.
+
+---
+
+## Trap #3 — the dashboard placeholder is `-:--:--`
+
+The wheel dashboard binding is literally:
+
+```js
+var t = $prop('F1SimHubLivePlugin.SessionTimeRemaining');
+return (t && t != '') ? t : '-:--:--';
+```
+
+So **`-:--:--` on the wheel always means the plugin emitted an empty `SessionTimeRemaining`** — i.e. one of the formula inputs was missing (no `SessionEndUtc` *and* no valid anchor, or no `_playheadUtc`). It is never a formatting bug in the dashboard; always debug the plugin side. *(binding lives in `dashboards/F1RaceSim_GSIFPEV2/F1RaceSim_GSIFPEV2.djson`, element `Name:"TimeLeft"`.)*
+
+---
+
+## Trap #4 — formatting: drop the hour under 60 min, keep it for races
+
+Practice/qualifying are always <1h; races run >1h. The format must adapt, identically on both surfaces:
+
+```csharp
+ts.TotalHours >= 1
+    ? $"{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}"   // race:      "1:32:40"
+    : $"{ts.Minutes}:{ts.Seconds:D2}";                          // practice:  "34:12"  (no leading zero, no phantom hour)
+```
+
+- Plugin: `MultiViewerHttpClient.FormatRemaining`.
+- Picker: `SessionInfoClient.FormatHms`.
+
+**Keep these two byte-for-byte identical.** Always clamp negative `TimeSpan` to zero first.
+
+---
+
+## SessionEndUtc — parse it from SessionInfo, not SessionData
+
+```
+EndDate  = session-local end time, ISO, NO offset   (e.g. "2026-06-26T18:00:00")
+GmtOffset = local→UTC delta                          (e.g. "+02:00")
+SessionEndUtc = new DateTimeOffset(SpecifyKind(EndDate, Unspecified), GmtOffset).UtcDateTime
+```
+
+This is correct regardless of the machine's local time zone or DST. Both surfaces parse it the same way (`SessionInfoClient.cs` and `MultiViewerHttpClient.TryUpdateSessionEnd`). It's cached once per session (`_sessionEndUtc`); MV does not change it mid-session.
+
+> The plugin used to fetch `SessionData` for a race-start time + duration; that path is gone. It now fetches **`SessionInfo`** in the same slot.
+
+---
+
+## The 2-second PlaybackLead
+
+```csharp
+private static readonly TimeSpan PlaybackLead = TimeSpan.FromSeconds(2);
+```
+
+MV decodes CarData a beat ahead of the painted video, so the raw playhead leads MV's on-screen Live Timing clock by ~2s. Subtracting `PlaybackLead` from the playhead lines our countdown up with what's on screen.
+
+**The constant is duplicated in both files on purpose (separate processes). Keep the two values equal.** If MV ever changes its buffering and the lead drifts, this is the single number to retune on each side.
+
+---
+
+## Invariants — the DO-NOT-BREAK list
+
+1. **One formula, two surfaces, identical behaviour.** Change the picker clock and the wheel clock together.
+2. **Read every Newtonsoft UTC with `Value<DateTime>()`**, never `Parse(ToString())`. (System.Text.Json side: `AssumeUniversal | AdjustToUniversal` + `SpecifyKind(Utc)`.)
+3. **The clock playhead is driver-independent and never reset on a driver switch.** Never wire the clock to `_lastEmittedUtc` or any per-driver/forward-only/dedup cursor.
+4. **No hard-coded session length.** Session end comes from `SessionInfo` (`EndDate`+`GmtOffset`); never reintroduce a `_sessionDuration`/`FromHours(2)` default.
+5. **Never display `ExtrapolatedClock.Remaining` raw** — extrapolate the anchor to the playhead (`Remaining − (playhead − Utc)` while `Extrapolating`, frozen otherwise). This anchor-extrapolation is the **primary** countdown; `SessionEnd − playhead` is fallback only and is wrong for races (ignores the formation lap).
+6. **`FormatRemaining`/`FormatHms` stay identical** and drop the hour below 60 min.
+7. **`-:--:--` on the wheel = empty `SessionTimeRemaining` from the plugin.** Debug the plugin inputs, not the dashboard.
+8. **Keep `PlaybackLead` equal on both sides.**
+
+---
+
+## File / line map
+
+| Concern | Plugin (wheel) | Picker (header) |
+|---|---|---|
+| Playhead capture | `MultiViewerHttpClient.HandleCarDataResponse` → `_playheadUtc` via `CarDataDecoder.LatestFrameUtc` | `PickerTelemetryClient` → `LatestCarDataUtc` (`_latestFrameUtc`) |
+| Driver-independent frame UTC | `F1Signalr/CarDataDecoder.LatestFrameUtc` | `PickerTelemetryClient.TryParseLatestNJson` |
+| SessionEnd parse | `MultiViewerHttpClient.TryUpdateSessionEnd` | `SessionInfoClient` (EndDate+GmtOffset block) |
+| Countdown computation | `MultiViewerHttpClient.SessionDataLoopAsync` (the `remainingText` block — ExtrapolatedClock primary, SessionEnd fallback) | `SessionInfoClient.TickClock` (same) |
+| ExtrapolatedClock anchor decode | `MultiViewer/ExtrapolatedClockDecoder.cs` (`Parse` / `LiveRemaining`) | `SessionInfoClient` clock-parse block → `_clockAnchorUtc` |
+| Formatting | `MultiViewerHttpClient.FormatRemaining` | `SessionInfoClient.FormatHms` |
+| PlaybackLead constant | `MultiViewerHttpClient.PlaybackLead` | `SessionInfoClient.PlaybackLead` |
+| Dashboard binding / placeholder | `dashboards/F1RaceSim_GSIFPEV2/F1RaceSim_GSIFPEV2.djson` (`TimeLeft`) | — |
+
+---
+
+## Regression history (so we don't repeat it)
+
+| Version | Symptom | Root cause | Fix |
+|---|---|---|---|
+| 1.10.7 | Clock ticks then jumps every ~10s | Used `Heartbeat` (updates ~10s) as the clock | Switch to CarData playhead |
+| ≤1.10.8 | Wheel shows phantom leading `1:` on practice | `_sessionDuration` defaulted to `FromHours(2)` | Removed; no session-length constant |
+| 1.10.8 | Picker header stuck at `0:00` | Newtonsoft `ToString()` dropped `Z` → +5h → playhead past end | Read with `Value<DateTime>()` |
+| 1.10.9–1.10.10 | Wheel countdown `-:--:--` | Clock used `_lastEmittedUtc` (per-driver, resets on switch) | Driver-independent `_playheadUtc` |
+| 1.10.11 | Wheel still `-:--:--` (anchor produced empty) | Wheel used `ExtrapolatedClock` anchor, not `SessionEnd−playhead` | Port the picker's `SessionInfo` `SessionEnd−playhead` formula to the plugin |
+| 1.10.12 | Both clocks ~2s ahead of MV Live Timing | MV decode-buffer lead | `PlaybackLead = 2s` on both surfaces |
+| 1.10.13 | Race countdown ~4 min ahead of MV (ignored formation lap) | `SessionEnd − playhead` uses the *scheduled* end, blind to the pre-race delay | `ExtrapolatedClock` anchor (lights-out for a race) extrapolated to the playhead is now primary; `SessionEnd − playhead` demoted to fallback |

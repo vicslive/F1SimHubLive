@@ -36,9 +36,12 @@ public sealed class SessionInfoClient : IDisposable
     private CancellationTokenSource? _cts;
     private Task? _loopTask;
 
-    // Last successful ExtrapolatedClock fetch — used for Practice / Qualifying.
+    // Last successful ExtrapolatedClock fetch. _clockAnchorUtc is the clock's
+    // OWN Utc baseline (lights-out for a race, session start otherwise) — the
+    // session/race countdown is _lastRemaining − (playhead − _clockAnchorUtc).
     private TimeSpan _lastRemaining = TimeSpan.Zero;
     private DateTime _lastRemainingFetchUtc = DateTime.MinValue;
+    private DateTime? _clockAnchorUtc;
     private bool _extrapolating;
 
     // Last successful Heartbeat fetch — used to extrapolate the race clock
@@ -47,6 +50,12 @@ public sealed class SessionInfoClient : IDisposable
     private DateTime? _lastHeartbeatUtc;
     private DateTime _lastHeartbeatFetchedAt = DateTime.MinValue;
     private bool _isRaceSession;
+
+    // MV serves the freshest CarData frame ~2s ahead of the painted video /
+    // live-timing panel (decode buffer), so the raw playhead leads on-screen
+    // time. Subtract this from the playhead so the header countdown matches MV.
+    // Keep identical to the plugin's PlaybackLead (see docs/CLOCKS.md).
+    private static readonly TimeSpan PlaybackLead = TimeSpan.FromSeconds(2);
 
     public SessionHeaderModel Model => _model;
 
@@ -131,6 +140,7 @@ public sealed class SessionInfoClient : IDisposable
         int? currentLap = null, totalLaps = null;
         TimeSpan? remaining = null;
         bool extrapolating = false;
+        DateTime? clockAnchorUtc = null;
         DateTime? sessionEndUtc = null;
         DateTime? heartbeatUtc = null;
 
@@ -207,6 +217,14 @@ public sealed class SessionInfoClient : IDisposable
                     remaining = rem;
                 if (root.TryGetProperty("Extrapolating", out var ex) &&
                     ex.ValueKind == JsonValueKind.True) extrapolating = true;
+                // The clock's own Utc baseline — for a race this is lights-out,
+                // pushed when the red lights go off, so it bakes in the formation
+                // lap + pre-race delay. AssumeUniversal|AdjustToUniversal keeps it
+                // UTC regardless of the trailing Z (see docs/CLOCKS.md trap #1).
+                if (root.TryGetProperty("Utc", out var cu) &&
+                    DateTime.TryParse(cu.GetString(), CultureInfo.InvariantCulture,
+                        DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var ca))
+                    clockAnchorUtc = DateTime.SpecifyKind(ca, DateTimeKind.Utc);
             }
             catch { }
         }
@@ -234,6 +252,7 @@ public sealed class SessionInfoClient : IDisposable
             _lastRemainingFetchUtc = DateTime.UtcNow;
             _extrapolating = extrapolating;
         }
+        if (clockAnchorUtc.HasValue) _clockAnchorUtc = clockAnchorUtc;
         if (sessionEndUtc.HasValue) _sessionEndUtc = sessionEndUtc;
         if (heartbeatUtc.HasValue)
         {
@@ -265,22 +284,40 @@ public sealed class SessionInfoClient : IDisposable
 
     /// <summary>
     /// Recomputes the displayed remaining-time string between 1 Hz polls.
-    /// The countdown is <c>SessionEndUtc - playhead</c>, where the playhead is
+    /// The countdown is MV's <c>ExtrapolatedClock</c> anchor extrapolated to the
+    /// playhead: <c>Remaining - (playhead - anchorUtc)</c>, where the playhead is
     /// the freshest CarData frame UTC supplied by <see cref="PlayheadProvider"/>.
-    /// That frame UTC advances at 1x while the video plays, freezes when paused
-    /// (frames stop arriving) and jumps on a seek, so the header tracks MV's own
-    /// clock and the video frame-for-frame. When no telemetry playhead is
-    /// available yet we fall back to the Heartbeat (race) or the last
-    /// ExtrapolatedClock value (practice / qualifying).
+    /// For a race the anchor Utc is lights-out (pushed when the red lights go
+    /// off), so this bakes in the formation lap + pre-race delay and matches MV
+    /// Live Timing to the second; for practice/qualifying the anchor is the
+    /// session start, so the same formula is correct. The frame UTC advances at
+    /// 1x while playing, freezes when paused and jumps on a seek, so the header
+    /// tracks the video frame-for-frame. <c>SessionEndUtc - playhead</c> is a
+    /// FALLBACK only (scheduled end; reads a few minutes ahead during a race
+    /// start). See docs/CLOCKS.md before changing this.
     /// </summary>
     private void TickClock()
     {
-        // Primary: session end minus the live telemetry playhead. Works for
-        // every session type, live or VOD, with no pause/seek special-casing.
         DateTime playhead = PlayheadProvider?.Invoke() ?? DateTime.MinValue;
+        DateTime pos = playhead - PlaybackLead;
+
+        // Primary: official ExtrapolatedClock anchor extrapolated to the playback
+        // position. While Extrapolating==false (e.g. formation lap) MV freezes
+        // Remaining, so we show it as-is to match the pre-start clock.
+        if (_clockAnchorUtc.HasValue && playhead != DateTime.MinValue)
+        {
+            TimeSpan rem0 = _extrapolating
+                ? _lastRemaining - (pos - _clockAnchorUtc.Value)
+                : _lastRemaining;
+            _model.TimeText = FormatHms(rem0);
+            return;
+        }
+
+        // Fallback: scheduled session end minus the playhead. Approximate during
+        // a race start until the ExtrapolatedClock anchor arrives.
         if (_sessionEndUtc.HasValue && playhead != DateTime.MinValue)
         {
-            _model.TimeText = FormatHms(_sessionEndUtc.Value - playhead);
+            _model.TimeText = FormatHms(_sessionEndUtc.Value - pos);
             return;
         }
 

@@ -35,6 +35,11 @@ namespace F1SimHubLive.MultiViewer
         // The wheel countdown is SessionEndUtc - playhead, identical to the
         // picker header clock, which is the proven formula.
         private DateTime? _sessionEndUtc;
+        // MV serves the freshest CarData frame ~2s ahead of the painted video /
+        // live-timing panel (decode buffer), so the raw playhead leads on-screen
+        // time. Subtract this from the playhead so the countdown matches MV.
+        // Keep this value identical to the picker's PlaybackLead (see docs/CLOCKS.md).
+        private static readonly TimeSpan PlaybackLead = TimeSpan.FromSeconds(2);
         // Latest valid ExtrapolatedClock anchor ({Utc, Remaining, Extrapolating}).
         // The session clock is this anchor extrapolated to the current CarData
         // playback position — no hard-coded duration, no race-start dependency.
@@ -253,26 +258,30 @@ namespace F1SimHubLive.MultiViewer
                         if (clock.IsValid) _lastClock = clock;
                     }
 
-                    // Session remaining = anchor Remaining extrapolated to the
-                    // current CarData playback position (the replay "now"). This
-                    // uses only the ExtrapolatedClock's own Utc baseline + the
-                    // CarData frame Utc, so it can't drift to a phantom +1h from
-                    // a stale duration guess (the old 2h-default bug).
-                    // Wheel countdown — identical formula to the picker header
-                    // clock: remaining = SessionEnd(UTC) - playback position.
-                    // The playhead is the driver-independent CarData frame UTC,
-                    // so it advances with the video and survives driver switches.
-                    // Fall back to the ExtrapolatedClock anchor only when
-                    // SessionInfo hasn't yielded an end time yet.
+                    // Wheel countdown — MV's ExtrapolatedClock anchor extrapolated
+                    // to the playback position. This is the OFFICIAL session/race
+                    // clock: for a race the anchor Utc is lights-out (pushed when
+                    // the red lights go off), so the countdown automatically
+                    // accounts for the formation lap + pre-race delays and matches
+                    // MV Live Timing to the second. For practice/quali the anchor
+                    // is the session start, so the same extrapolation is correct.
+                    // While Extrapolating==false (e.g. formation lap) LiveRemaining
+                    // returns the frozen Remaining, matching MV's pre-start clock.
+                    // PlaybackLead shaves MV's ~2s decode-buffer lead.
+                    // SessionEnd-playhead is a FALLBACK only (scheduled end → can
+                    // read a few minutes ahead during a race start until the
+                    // ExtrapolatedClock anchor arrives).
+                    // See docs/CLOCKS.md before changing any of this.
                     string remainingText = "";
-                    if (_sessionEndUtc.HasValue && _playheadUtc != DateTime.MinValue)
+                    DateTime pos = _playheadUtc - PlaybackLead;
+                    if (_lastClock.IsValid && _playheadUtc != DateTime.MinValue)
                     {
-                        remainingText = FormatRemaining(_sessionEndUtc.Value - _playheadUtc);
-                    }
-                    else if (_lastClock.IsValid && _playheadUtc != DateTime.MinValue)
-                    {
-                        var live = ExtrapolatedClockDecoder.LiveRemaining(_lastClock, _playheadUtc);
+                        var live = ExtrapolatedClockDecoder.LiveRemaining(_lastClock, pos);
                         remainingText = FormatRemaining(live);
+                    }
+                    else if (_sessionEndUtc.HasValue && _playheadUtc != DateTime.MinValue)
+                    {
+                        remainingText = FormatRemaining(_sessionEndUtc.Value - pos);
                     }
 
                     OnSessionSnapshot?.Invoke(new SessionSnapshot

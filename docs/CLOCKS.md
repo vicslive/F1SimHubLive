@@ -250,6 +250,28 @@ The clocks ate a lot of time because of guessing. The fast path:
    ```
 6. **Deploy reality:** the DLL/dashboard deploy is auto, but **only when SimHub is closed** (`dotnet build` prints `[deploy] SKIP` otherwise). The picker is single-file — copying the exe over `SimHub\F1SimHubLive-Picker.exe` is a full deploy. Both SimHub **and** the picker must be closed.
 
+### Running the validation capture (no SimHub needed)
+
+`scripts/Capture-ClockTimeline.ps1` reproduces the exact plugin/picker countdown maths straight off MV's localhost API, so you can verify the clock against MV Live Timing across any session phase without launching SimHub. Start an MV replay (or watch live), then:
+
+```powershell
+# capture for 40 min, sample every 3s, append CSV to a chosen path
+pwsh -NoProfile -File .\scripts\Capture-ClockTimeline.ps1 -Seconds 2400 -IntervalMs 3000 -Out .\clock-timeline.csv
+```
+
+Each row records MV's raw anchor (`anchor_utc`, `mv_remaining`), the freshest CarData playhead, **our** extrapolated `our_remaining` (primary path) and the `fallback_remaining` (`SessionEnd − playhead`) side by side, plus a per-row `delta_s` (≈ poll interval at 1× play). `Extrapolating=false` rows print yellow — that's a frozen clock (pre-green / between quali segments / red flag). To prove per-segment re-anchoring, extract the anchor changes and `Extrapolating` flips:
+
+```powershell
+$prevA=$null;$prevE=$null
+Get-Content .\clock-timeline.csv | Select-Object -Skip 1 | ForEach-Object {
+  $c=$_ -split ','; if($c.Count -lt 10){return}
+  if($c[4] -ne $prevA){"ANCHOR -> $($c[4])  mvRem=$($c[5]) extrap=$($c[3]) ourRem=$($c[7])";$prevA=$c[4]}
+  if($c[3] -ne $prevE){"  EXTRAP $prevE -> $($c[3])";$prevE=$c[3]}
+}
+```
+
+> **Gotcha:** don't pipe the live capture through `Select-Object -First N` — it closes the pipeline and kills the still-running poller after N rows. Read the CSV instead.
+
 ---
 
 ## Invariants — the DO-NOT-BREAK list

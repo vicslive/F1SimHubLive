@@ -6,6 +6,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ## [Unreleased]
 
+### Docs
+- **Verified the full qualifying clock behaviour (Q1→Q2→Q3) on a Barcelona replay** and recorded the captured timeline in [`docs/CLOCKS.md`](docs/CLOCKS.md). Confirmed MV uses a **two-phase per-segment re-anchor** (stages the next segment frozen with `Extrapolating=false`, then flips to `true` at green) and that both surfaces follow each reset to ~1s with no segment-detection code, while the `SessionEnd − playhead` fallback was 40–58 min wrong through Q1/Q2. Updated the verification-status banner (practice + race + full qualifying now replay-verified; live still pending).
+
+### Added
+- `scripts/Capture-ClockTimeline.ps1` — a standalone poller that samples MV's `ExtrapolatedClock` + freshest CarData playhead every few seconds and computes our countdown exactly as the plugin/picker do (primary anchor-extrapolation **and** the SessionEnd fallback), flagging `Extrapolating=false` segment gaps. Lets us validate the clock against MV Live Timing across session phases **without SimHub running**, and is the tool to re-run for the first live-qualifying verification.
 ## [1.10.14] — 2026-06-27
 
 ### Fixed

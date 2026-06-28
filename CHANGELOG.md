@@ -17,6 +17,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 ### Added
 - `scripts/Capture-ClockTimeline.ps1` — a standalone poller that samples MV's `ExtrapolatedClock` + freshest CarData playhead every few seconds and computes our countdown exactly as the plugin/picker do (primary anchor-extrapolation **and** the SessionEnd fallback), flagging `Extrapolating=false` segment gaps. Lets us validate the clock against MV Live Timing across session phases **without SimHub running**, and is the tool to re-run for the first live-qualifying verification.
 
+## [1.10.18] — 2026-06-28
+
+### Fixed
+- **Stale telemetry for parked / broken cars is now suppressed.** When a car's ECU stops transmitting (stopped on track, broken down, engine off in the pits), F1's `CarData` freezes that car's last on-track sample and carries it forward indefinitely — MV relays it verbatim, so a parked car kept "reporting" e.g. 188 km/h / 4th gear / 11.5k RPM (with Throttle **and** Brake both pinned at an impossible 104). The picker now tracks each car's RPM+Speed+Gear and, if none change across 5 s of advancing frame time, blanks that car's telemetry (0 km/h / blank RPM / neutral gear) so a stopped car reads as stopped. Raw values are used for change-detection, so a car that genuinely resumes clears instantly; keyed on the feed's frame clock so replay behaves identically. This is a deliberate divergence from MV, which mirrors the frozen frame. Implemented in `PickerTelemetryClient.ApplyStalenessFilter`. Note: this is a *source-feed* artifact (verified live on SAI #55 — frozen 8 s while `Retired`/`Stopped` were still false), not an MV or picker bug; we just choose not to mirror it.
+
 ## [1.10.17] — 2026-06-28
 
 ### Added

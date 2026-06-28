@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
@@ -68,6 +69,26 @@ internal sealed class PickerTelemetryClient : IDisposable
     private DateTime _latestFrameUtc = DateTime.MinValue;
     private int _parseFailureCount;
     private bool _rawDumpWritten;
+
+    // ---- stale-telemetry suppression (v1.10.18) ----
+    // A car whose ECU has stopped transmitting (parked / broken / engine off)
+    // keeps reporting its LAST CarData sample frozen — F1's feed carries the
+    // dead frame forward and MV relays it verbatim (e.g. a parked car still
+    // showing 188 km/h / 4th / 11.5k RPM). We don't have to be a dumb mirror:
+    // if a car's RPM+Speed+Gear haven't changed across this many seconds of
+    // *advancing* frame time, we treat the telemetry as stale and blank it
+    // (0 speed / 0 rpm / neutral gear) so a parked car reads as parked.
+    // Keyed on the feed's own frame clock, not wall-clock, so replay works too.
+    private const double StaleTelemetrySeconds = 5.0;
+    private readonly Dictionary<string, TelemetryFreshness> _freshness = new();
+
+    private sealed class TelemetryFreshness
+    {
+        public int Rpm;
+        public int Speed;
+        public int Gear;
+        public DateTime LastChangedFrameUtc;
+    }
 
     public event Action<double>? OnRpm;
     public event Action<string>? OnStatus;
@@ -203,6 +224,18 @@ internal sealed class PickerTelemetryClient : IDisposable
                     // seeks — so the session-header countdown tracks the video.
                     if (utc != DateTime.MinValue) _latestFrameUtc = utc;
 
+                    // Suppress frozen telemetry for parked/dead cars before it
+                    // reaches the UI (see _freshness). Mutates speeds/inputsBatch
+                    // in place; then re-derive the selected driver's convenience
+                    // values so the header cluster matches the filtered batch.
+                    ApplyStalenessFilter(speeds, inputsBatch, utc);
+                    if (inputsBatch.TryGetValue(driver, out var selFiltered))
+                    {
+                        rpm = selFiltered.Rpm;
+                        gear = selFiltered.Gear;
+                        throttle = selFiltered.Throttle;
+                    }
+
                     if (speeds.Count > 0)
                     {
                         OnSpeedsBatch?.Invoke(speeds);
@@ -273,6 +306,68 @@ internal sealed class PickerTelemetryClient : IDisposable
     {
         try { await Task.Delay(ms, ct).ConfigureAwait(false); }
         catch (OperationCanceledException) { }
+    }
+
+    /// <summary>
+    /// Suppresses frozen telemetry for parked / broken / shut-off cars. F1's
+    /// CarData freezes a car's last sample when its ECU stops transmitting and
+    /// MV relays it verbatim, so a parked car keeps "reporting" its final
+    /// on-track RPM/speed/gear forever (Throttle and Brake often both pinned
+    /// at the same impossible value). We track each car's RPM+Speed+Gear and,
+    /// if none of them change across <see cref="StaleTelemetrySeconds"/> of
+    /// *advancing frame time*, blank that car's telemetry (0 speed / 0 rpm /
+    /// neutral gear) so a stopped car reads as stopped. Comparison and storage
+    /// always use the RAW incoming values, so a car that genuinely resumes
+    /// (values change again) immediately clears its stale state.
+    /// Keyed on the feed's frame clock, not wall-clock, so replay behaves too.
+    /// Mutates <paramref name="speeds"/> and <paramref name="inputs"/> in place.
+    /// </summary>
+    private void ApplyStalenessFilter(
+        Dictionary<string, int> speeds,
+        Dictionary<string, DriverInputs> inputs,
+        DateTime frameUtc)
+    {
+        if (frameUtc == DateTime.MinValue) return;
+
+        foreach (var car in inputs.Keys.ToList())
+        {
+            DriverInputs di = inputs[car];
+            int rpm = (int)Math.Round(di.Rpm);
+            int gear = di.Gear;
+            int speed = speeds.TryGetValue(car, out var sp) ? sp : 0;
+
+            if (!_freshness.TryGetValue(car, out var f))
+            {
+                // First time we see this car — assume fresh, record raw values.
+                _freshness[car] = new TelemetryFreshness
+                {
+                    Rpm = rpm,
+                    Speed = speed,
+                    Gear = gear,
+                    LastChangedFrameUtc = frameUtc,
+                };
+                continue;
+            }
+
+            bool changed = rpm != f.Rpm || speed != f.Speed || gear != f.Gear;
+            if (changed)
+            {
+                f.Rpm = rpm;
+                f.Speed = speed;
+                f.Gear = gear;
+                f.LastChangedFrameUtc = frameUtc;
+                continue;
+            }
+
+            // Unchanged this frame — how long has it been static? Negative
+            // deltas (a backward replay seek) read as "not stale", which is fine.
+            double staticSeconds = (frameUtc - f.LastChangedFrameUtc).TotalSeconds;
+            if (staticSeconds >= StaleTelemetrySeconds)
+            {
+                speeds[car] = 0;
+                inputs[car] = new DriverInputs(0, 0, 0);
+            }
+        }
     }
 
     /// <summary>

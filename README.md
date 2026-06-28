@@ -521,23 +521,23 @@ The plugin doesn't just drive the LCD — the same race-control flag state light
 
 ## Driver Picker (mid-race driver switching + live timing)
 
-Hamilton crashes on lap 23. You want to flip the wheel to Antonelli without
-stopping SimHub, editing JSON, and sitting through MultiViewer's ~30-second
-warm-up after a restart. That's what the **F1SimHubLive Driver Picker** is for
-— plus, since v1.2.0, it doubles as a full-screen live-timing replica of
-MultiViewer with per-driver speed, lap times, gap/interval, tyre stints, pit
-counts, and PB/SB-coloured sector strips.
+Lewis Hamilton takes the chequered flag at Barcelona for his **first win in
+Ferrari red** — you want the wheel locked on HAM #44 for that final lap, but
+ten laps ago you were following the midfield scrap. The **F1SimHubLive Driver
+Picker** lets you flip the wheel to any driver on the fly — no stopping SimHub,
+no editing JSON, no sitting through MultiViewer's ~30-second warm-up after a
+restart. Plus, since v1.2.0, it doubles as a full-screen live-timing replica of
+MultiViewer with per-driver speed, gear/throttle/RPM, lap times, gap/interval,
+tyre stints, pit counts, position changes, and PB/SB-coloured sector strips.
 
 <!--
   Screenshot: docs/screenshots/picker-overview.png
-  RE-SHOOT NEEDED (current file is from the v1.7.2 era and predates the
-  per-driver input cluster, position-change arrows, and retired-row styling).
-  To replace: run a Race in MultiViewer (or load a race in the Replay panel),
-  let the field settle a few laps in so gaps/sectors/arrows are populated, pick
-  a mid-pack driver, then capture the whole picker window and overwrite this
-  same file (keep the name `picker-overview.png` so the link below just works).
+  Current shot: 2026 Barcelona GP — Hamilton's first win as a Ferrari driver.
+  To re-shoot: capture the whole picker window during a Race (a few laps in so
+  gaps/sectors/arrows are populated, a notable driver selected), then overwrite
+  this same file (keep the name `picker-overview.png` so the link below works).
 -->
-![Driver Picker full live-timing view captured during a Race — header shows the session, lap counter and time remaining with the selected driver's live RPM bar and input cluster; the full field is sorted by position with team-coloured TLA tiles, a per-driver gear/throttle/RPM cluster, live speed in km/h, ▲/▼ positions gained-or-lost vs. grid, last and best lap times, INT and LDR gaps, tyre compound pills with stint age, pit counts, and per-driver three-row sector strips with PB/SB colour coding. Retired cars show a maroon RETIRED pill and fade back to 42% opacity.](docs/screenshots/picker-overview.png)
+![F1SimHubLive Driver Picker during the 2026 Barcelona GP — Lewis Hamilton's first win as a Ferrari driver. Header reads "Barcelona GP: Race, 25:24, Lap 66/66 (0 left)" with a green "Track Clear" pill; HAM #44 is selected at P1 (green border) with his session-best lap 1:20.122 in purple. The full 22-driver field is sorted by position with team-coloured TLA tiles, a per-driver gear/throttle/RPM input cluster, live speed in km/h, ▲/▼ positions gained-or-lost vs. grid, LAST and BEST lap times, INT and LDR gaps, tyre compound pills with stint age, pit counts, and three-row sector strips with PB/SB colour coding. Retired cars (LEC, BEA, HUL, BOT, STR) show a maroon RETIRED pill and fade back to 42% opacity. Bottom-left version reads v1.10.18.](docs/screenshots/picker-overview.png)
 
 **Full UI reference: [PICKER.md](PICKER.md)** — every element, every colour,
 every interaction, plus screenshots and troubleshooting.

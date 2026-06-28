@@ -145,7 +145,7 @@ The scrollbar is dark-themed to match.
 |---|---|---|---|---|
 | 0 | **Position** | 26 px | Driver's current race / qualifying position. Black-bold white on a dark grey rounded tile. `—` when zero. | `TimingData.Lines[*].Position` |
 | 1 | **TLA tile** | 52 px | Three-letter abbreviation on a tile coloured with the constructor's official team colour (Ferrari red, Mercedes silver, etc.). | `DriverList.Tla` + `TeamColour` |
-| 2 | **Input cluster** | 50 px | Dark circular ring with the **current gear letter** centered (`N` / `R` / `1`–`8`), a **blue throttle arc** sweeping clockwise around the ring 0–100 %, and the **integer RPM** in white beneath. Broadcast-style — see [Per-driver input cluster](#per-driver-input-cluster) below. Added v1.7.4–v1.7.6. | MV `CarData` channels `0` (RPM), `3` (gear), `4` (throttle) for that car's racing number |
+| 2 | **Input cluster** | 78 px | Dark circular ring with the **current gear letter** centered (`N` / `R` / `1`–`8`), a **blue throttle arc** sweeping clockwise around the ring 0–100 %, and the **integer RPM** in white beneath. In races, a **position-change arrow** (green ▲ gained / red ▼ lost vs. grid, muted `−0` for no change) sits alongside the ring. Broadcast-style — see [Per-driver input cluster](#per-driver-input-cluster) and [Positions gained / lost vs. grid](#positions-gained--lost-vs-grid) below. Added v1.7.4–v1.7.6; arrow added v1.10.17 (column widened 50→78 to seat it). | MV `CarData` channels `0` (RPM), `3` (gear), `4` (throttle) for that car's racing number; arrow from `TimingAppData.GridPos` − `Position` |
 | 3 | **Speed** | 72 px | Current car speed in km/h, big bold Consolas number with a tiny `km/h` under it. Updates ~5×/sec for **every car** (not just the selected one). `0` when telemetry is paused / driver in pit. | MV `CarData` channel `2` for that car's racing number |
 | 4 | **LAST + BEST lap** | 120 px | Two-row stack. `LAST` row shows the most recent completed lap (or `IN PIT` when the driver is in the pit lane). `BEST` row shows the personal best lap of the session. Colour-coded — see [Time colour scheme](#time-colour-scheme) below. | `TimingData.Lines[*].LastLapTime` + `TimingStats.Lines[*].PersonalBestLapTime` |
 | 5 | **INT + LDR** | 100 px | Two-row stack. `INT` = gap to the car directly ahead. `LDR` = gap to the race leader (blank for P1, who *is* the leader; `1 L` for lapped cars). Both rendered with leading sign (`+x.xxx`). | `TimingData.Lines[*].IntervalToPositionAhead.Value` + `GapToLeader` |
@@ -182,6 +182,36 @@ Compact broadcast-style indicator added in v1.7.4 — v1.7.6, mounted between th
 **Where the focused-driver duplicate lives:** the **picker header** (next to the RPM digit readout and LED preview strip) shows the same data for the *currently-selected* driver — vertical green throttle bar + big gear letter — so you can see your own driver's inputs at a glance while the row clusters show the field.
 
 **Under the hood** — see [docs/wpf-broadcast-visuals.md](docs/wpf-broadcast-visuals.md) for the WPF arc-geometry technique, the `IValueConverter` math, and the broadcast-layout conventions that drive these choices. That doc is the "how to build this kind of thing" reference for anyone extending the picker (or porting the pattern to another WPF tool).
+
+### Positions gained / lost vs. grid
+
+Added v1.10.17. In **races only**, each row shows the net positions the driver
+has gained or lost versus their **starting grid slot**, mirroring F1 official
+Live Timing:
+
+| Indicator | Meaning |
+|---|---|
+| 🟢 **▲ N** | Gained N positions since lights-out (current position better than grid) |
+| 🔴 **▼ N** | Lost N positions since lights-out |
+| ⬜ **−0** (muted grey) | No net change |
+| *(hidden)* | Practice / qualifying — there is no grid, so nothing renders |
+
+The grid slot comes from MV's `TimingAppData.Lines[n].GridPos` (a string) and the
+change is `GridPos − current Position`. Plumbed via `DriverTimingRow.PositionChange`
++ `HasGridPos`, rendered by `PositionChangeToTextConverter` (the ▲/▼/−0 glyph + number)
+and `PositionChangeToBrushConverter` (green/red/grey). Verified live: e.g. STR
+starting 22nd up to P19 renders **▲3**.
+
+### Retired / out-of-race treatment
+
+When a driver retires (`TimingData.Lines[*].Retired == true`) the picker matches
+F1 Live Timing's out-of-race styling:
+
+| Element | Behaviour | Version |
+|---|---|---|
+| **LAST column** | Shows a dark-maroon **`RETIRED`** pill instead of a lap time or the bright-red `IN PIT` pill. **Retired takes precedence over in-pit** — MV reports retired cars as `Retired:true` *and* `InPit:true`/`Stopped:true` simultaneously, so without the precedence they'd wrongly read `IN PIT`. | v1.10.15 |
+| **Whole row** | Dimmed to **42% opacity** so out-of-race cars visibly fade back while the live field stays bright. Bound via `RetiredToOpacityConverter` on the row Button's `Opacity`; hover/pressed/IsCurrent styling is unaffected. | v1.10.16 |
+| **Telemetry** | Parked/broken cars whose ECU has stopped have their **frozen telemetry suppressed** — F1's feed carries a stopped car's last on-track sample forward indefinitely, so the picker blanks speed/RPM/gear once RPM+Speed+Gear stay unchanged across ~5s of feed time (clears instantly if the car genuinely resumes). Keyed on the feed's frame clock, so replay behaves identically. | v1.10.18 |
 
 ### Time colour scheme
 
@@ -350,6 +380,11 @@ The picker doesn't have its own settings file. Behaviour is controlled by two fi
 | **v1.7.4** | **Per-driver input cluster** introduced — circular gear ring + RPM digit, mounted as a new 50 px column between the TLA tile and Speed on every row. Header gains a focused-driver cluster too (vertical green throttle bar + big gear letter) next to the existing RPM digit + LED preview. Telemetry plumbed via a new `OnInputsBatch` event on `PickerTelemetryClient` that walks MV `Cars.*.Channels` in a single pass and surfaces `(Gear, Throttle, Rpm)` per racing number. To make room without widening the window, the legacy `Name + team` column was retired (still accessible via TLA tooltip). |
 | **v1.7.5** | **Blue throttle arc** wrapped around the per-row gear ring — sweeps clockwise 0–260° as throttle goes 0–100 %, gap at the bottom, matching the F1 Live Timing broadcast layout. Implemented as a one-way `IValueConverter` (`ThrottleToArcGeometryConverter`) that builds a frozen `PathGeometry` with a single `ArcSegment` per throttle reading. Below 0.5 % throttle the arc renders empty so 0 % shows as a clean dark ring instead of a stray dot artefact. Path is marked `IsHitTestVisible="False"` so it doesn't swallow row-click events. See [docs/wpf-broadcast-visuals.md](docs/wpf-broadcast-visuals.md) for the geometry math. |
 | **v1.7.6** | RPM legibility tweak — per-row RPM digit changed from red `#FF4040` SemiBold FS=10 to white `#E8E8EE` Bold FS=12. Red-on-dark was hard to read at small sizes against the dark grey row background; white at FS=12 reads at a glance without crowding the 50 px cluster column. No layout shift — the existing stack panel absorbs the 2 px font bump. |
+| **v1.8.0** | **Replay panel** added — a header `⏯ Replay` button opens an on-demand replay UI driving the plugin's `F1Replay` source: year + session pickers from F1's public archive, play/pause, 0.5×–4× speed, scrubber, seek, seek-to-lap, one-time *Sync to video — Lap* + ±0.5 s nudge, and `● Go Live` to return to live. Talks to the plugin via `ReplayCommand.json` / `ReplayStatus.json` under `%APPDATA%\F1SimHubLive\`. See [Replay panel](#replay-panel-on-demand-no-multiviewer--v180). |
+| **v1.10.15** | **`RETIRED` pill** in the LAST column for retired drivers (dark maroon), taking precedence over `IN PIT` — MV reports retired cars as `Retired:true` *and* `InPit:true`/`Stopped:true` at once. |
+| **v1.10.16** | **Retired rows dimmed to 42% opacity** via `RetiredToOpacityConverter`, matching F1 Live Timing's out-of-race fade. Hover/pressed/IsCurrent styling unaffected. |
+| **v1.10.17** | **Position-change arrow** (green ▲ gained / red ▼ lost vs. grid, muted `−0` no change) added to each race row beside the gear ring; hidden in practice/qualifying. Change = `TimingAppData.GridPos − Position`; new `PositionChangeToTextConverter` + `PositionChangeToBrushConverter`; gear-cluster column widened 50→78 px to seat it. |
+| **v1.10.18** | **Frozen-telemetry suppression for parked/broken cars** — F1's feed carries a stopped car's last sample forward forever; the picker blanks speed/RPM/gear once RPM+Speed+Gear stay unchanged across ~5 s of feed time, so a stopped car reads as stopped (clears instantly on genuine resume). Keyed on the feed frame clock, so replay behaves identically. `PickerTelemetryClient.ApplyStalenessFilter`. |
 
 ---
 

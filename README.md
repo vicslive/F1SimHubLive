@@ -42,7 +42,7 @@ F1 TV broadcast (~1–3s behind live)
 6. [Keeping data in sync with the video](#keeping-data-in-sync-with-the-video)
 7. [SimHub property reference](#simhub-property-reference)
 8. [F1RaceSim_GSIFPEV2 dashboard](#F1RaceSim_GSIFPEV2-dashboard)
-9. [Driver Picker (mid-race driver switching)](#driver-picker-mid-race-driver-switching)
+9. [Driver Picker (mid-race driver switching + live timing)](#driver-picker-mid-race-driver-switching--live-timing)
 10. [Build the plugin](#build-the-plugin)
 11. [Install (manual)](#install-manual)
 12. [Configure](#configure)
@@ -528,7 +528,16 @@ warm-up after a restart. That's what the **F1SimHubLive Driver Picker** is for
 MultiViewer with per-driver speed, lap times, gap/interval, tyre stints, pit
 counts, and PB/SB-coloured sector strips.
 
-![Driver Picker v1.7.2 full live-timing view captured during the 2026 Monaco GP — header shows "Monaco GP: Race, Lap 53/78, 25 left", HAM #44 selected with a live RPM bar, full 22-driver field sorted by position with ANT (Antonelli) leading at P1, team-colored TLA tiles, live speed in km/h, last and best lap times, INT and LDR gaps, tyre compound pills with stint age, pit counts, and per-driver three-row sector strips with PB/SB color coding](docs/screenshots/picker-overview.png)
+<!--
+  Screenshot: docs/screenshots/picker-overview.png
+  RE-SHOOT NEEDED (current file is from the v1.7.2 era and predates the
+  per-driver input cluster, position-change arrows, and retired-row styling).
+  To replace: run a Race in MultiViewer (or load a race in the Replay panel),
+  let the field settle a few laps in so gaps/sectors/arrows are populated, pick
+  a mid-pack driver, then capture the whole picker window and overwrite this
+  same file (keep the name `picker-overview.png` so the link below just works).
+-->
+![Driver Picker full live-timing view captured during a Race — header shows the session, lap counter and time remaining with the selected driver's live RPM bar and input cluster; the full field is sorted by position with team-coloured TLA tiles, a per-driver gear/throttle/RPM cluster, live speed in km/h, ▲/▼ positions gained-or-lost vs. grid, last and best lap times, INT and LDR gaps, tyre compound pills with stint age, pit counts, and per-driver three-row sector strips with PB/SB colour coding. Retired cars show a maroon RETIRED pill and fade back to 42% opacity.](docs/screenshots/picker-overview.png)
 
 **Full UI reference: [PICKER.md](PICKER.md)** — every element, every colour,
 every interaction, plus screenshots and troubleshooting.
@@ -537,14 +546,40 @@ every interaction, plus screenshots and troubleshooting.
 
 - Standalone WPF window, ~860 tall, scroll-anywhere driver list, dark
   Windows 11 chrome, always-on-top by default.
-- Header shows the currently-active driver and a live 15-LED RPM bar that
-  mirrors the wheel.
+- Header shows the currently-active driver, a live 15-LED RPM bar that
+  mirrors the wheel, and a focused-driver input cluster (vertical throttle
+  bar + big gear letter + RPM digit).
 - Driver list is sorted by current race position (from MultiViewer's
   `TimingData`), with team-coloured TLA tiles, live speed in km/h, last and
   best lap times, interval to car ahead and gap to leader, current tyre
   compound and stint age, pit count, and a three-row sector strip
   (segments / current sector time / personal-best sector time) with
   authoritative PB/SB colour coding from MV's `TimingStats` endpoint.
+- **Per-driver input cluster on every row** — a broadcast-style ring showing
+  that car's current **gear** (centre letter), **throttle** (blue arc sweeping
+  the ring 0–100%) and **RPM** (digit beneath), extracted live from MV
+  `CarData` for all cars at once, not just the selected one.
+- **Positions gained / lost vs. the grid** — each race row shows a green ▲ for
+  net positions gained or a red ▼ for positions lost versus the starting grid
+  slot (muted `−0` for no change), mirroring F1 official Live Timing. Hidden in
+  practice/qualifying, which have no grid.
+- **Retired-car treatment** — a driver that retires shows a dark-maroon
+  `RETIRED` pill in the LAST column (takes precedence over `IN PIT`) and the
+  whole row fades back to 42% opacity, matching F1 Live Timing's handling of
+  out-of-race cars.
+- **Parked / broken-car telemetry is suppressed** — F1's feed freezes a car's
+  last sample when its ECU stops, so a stopped car would otherwise keep
+  "reporting" its final speed/gear/RPM forever. The picker detects an
+  unchanging RPM+Speed+Gear over ~5s of feed time and blanks it, so a stopped
+  car reads as stopped (and clears instantly if it genuinely resumes).
+- **Built-in Replay panel** — click **`⏯ Replay`** in the header to play back
+  **any past F1 session** straight from F1's public archive, with no
+  MultiViewer and no F1 TV subscription for the data: year/session pickers,
+  play/pause, 0.5×–4× speed, scrubber, seek-to-lap, and a one-time sync to your
+  video. `● Go Live` returns to the live source. Full reference in
+  [PICKER.md](PICKER.md#replay-panel-on-demand-no-multiviewer--v180); the
+  source itself is described under
+  [Three data sources](#three-data-sources-f1-live-multiviewer-f1-replay).
 - **One click on any driver** writes the new `DriverNumber` to `settings.json`.
   The plugin's `FileSystemWatcher` picks up the change within ~250ms and the
   wheel flips to the new driver inside about a second — **no SimHub restart,

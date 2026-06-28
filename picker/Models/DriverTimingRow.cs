@@ -252,6 +252,12 @@ public enum LapStatus
     // "IN PIT" box (matching MV Live Timing's treatment) without needing
     // a separate IMultiValueConverter on the binding.
     InPit,
+    // Sentinel value used only on row.LastLapStatus when the driver has
+    // retired (TimingData "Retired": true). Drives the dark-red "RETIRED"
+    // pill in the LAST cell, mirroring F1 official Live Timing. Takes
+    // precedence over InPit so a car that retired in the pits still shows
+    // RETIRED rather than IN PIT.
+    Retired,
 }
 
 /// <summary>

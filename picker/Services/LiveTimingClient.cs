@@ -522,10 +522,17 @@ public sealed class LiveTimingClient : IDisposable
 
             row.Position = s.Position;
 
-            // LAST: when in pit, show literal "IN PIT" + InPit status so the
-            // pill renders red (mirrors MV Live Timing). When not in pit, the
-            // raw lap time with its normal PB/SB pill colouring.
-            if (s.InPit)
+            // LAST: retired takes precedence (dark-red "RETIRED" pill,
+            // mirrors F1 official Live Timing) — a car that retired in the
+            // pits still reads RETIRED, not IN PIT. Then in-pit shows the
+            // red "IN PIT" pill. Otherwise the raw lap time with its normal
+            // PB/SB pill colouring.
+            if (s.Retired)
+            {
+                row.LastLapTime = "RETIRED";
+                row.LastLapStatus = LapStatus.Retired;
+            }
+            else if (s.InPit)
             {
                 row.LastLapTime = "IN PIT";
                 row.LastLapStatus = LapStatus.InPit;

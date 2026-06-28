@@ -16,6 +16,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 
 ### Added
 - `scripts/Capture-ClockTimeline.ps1` — a standalone poller that samples MV's `ExtrapolatedClock` + freshest CarData playhead every few seconds and computes our countdown exactly as the plugin/picker do (primary anchor-extrapolation **and** the SessionEnd fallback), flagging `Extrapolating=false` segment gaps. Lets us validate the clock against MV Live Timing across session phases **without SimHub running**, and is the tool to re-run for the first live-qualifying verification.
+
+## [1.10.15] — 2026-06-28
+
+### Added
+- **`RETIRED` pill in the timing tower** — when a driver retires, the LAST column now shows a dark-maroon `RETIRED` pill (matching F1 official Live Timing), instead of the bright-red `IN PIT`. The `Retired` flag was already parsed from `TimingData` and plumbed to `DriverTimingRow.Retired`; this wires it through to the LAST cell via a new `LapStatus.Retired` and the box converters. **Retired takes precedence over in-pit** — verified live against MV (`/api/v1/live-timing/TimingData`), where retired cars (#11 PER, #77 BOT at the 2026 race) report `Retired:true` **and** `InPit:true`/`Stopped:true` simultaneously; without the precedence they'd wrongly read `IN PIT`.
 ## [1.10.14] — 2026-06-27
 
 ### Fixed

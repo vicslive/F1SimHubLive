@@ -23,10 +23,13 @@ internal sealed class LapStatusToBoxBackgroundConverter : IValueConverter
     private static readonly SolidColorBrush Green = new(Color.FromRgb(0x4C, 0xAF, 0x50));
     private static readonly SolidColorBrush Purple = new(Color.FromRgb(0x9C, 0x27, 0xB0));
     private static readonly SolidColorBrush Red = new(Color.FromRgb(0xF4, 0x43, 0x36));
+    // Dark maroon (Material red[900]) for the RETIRED pill — deliberately
+    // darker than the bright IN PIT red so the two states are distinct.
+    private static readonly SolidColorBrush Maroon = new(Color.FromRgb(0xB7, 0x1C, 0x1C));
 
     static LapStatusToBoxBackgroundConverter()
     {
-        Transparent.Freeze(); Green.Freeze(); Purple.Freeze(); Red.Freeze();
+        Transparent.Freeze(); Green.Freeze(); Purple.Freeze(); Red.Freeze(); Maroon.Freeze();
     }
 
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
@@ -38,6 +41,7 @@ internal sealed class LapStatusToBoxBackgroundConverter : IValueConverter
                 LapStatus.SessionBest => Purple,
                 LapStatus.PersonalBest => Green,
                 LapStatus.InPit => Red,
+                LapStatus.Retired => Maroon,
                 _ => Transparent,
             };
         }

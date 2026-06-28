@@ -17,6 +17,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 ### Added
 - `scripts/Capture-ClockTimeline.ps1` — a standalone poller that samples MV's `ExtrapolatedClock` + freshest CarData playhead every few seconds and computes our countdown exactly as the plugin/picker do (primary anchor-extrapolation **and** the SessionEnd fallback), flagging `Extrapolating=false` segment gaps. Lets us validate the clock against MV Live Timing across session phases **without SimHub running**, and is the tool to re-run for the first live-qualifying verification.
 
+## [1.10.16] — 2026-06-28
+
+### Added
+- **Retired rows now fade back** — a driver that has retired (`TimingData "Retired": true`) has their whole timing-tower row dimmed to 42% opacity, matching F1 official Live Timing's treatment of out-of-race cars. Implemented via `RetiredToOpacityConverter` bound to the row Button's `Opacity` on `DriverTimingRow.Retired`. Pairs with the `RETIRED` pill added in 1.10.15. `DriverButtonStyle` never sets `Opacity`, so hover/pressed/IsCurrent styling is unaffected.
+
 ## [1.10.15] — 2026-06-28
 
 ### Added

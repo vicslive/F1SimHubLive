@@ -25,6 +25,7 @@
         <svc:PositionToTextConverter x:Key="PositionToText" />
         <svc:TruthyToVisibilityConverter x:Key="TruthyToVisibility" />
         <svc:CountToGridStarConverter x:Key="CountToGridStar" />
+        <svc:RetiredToOpacityConverter x:Key="RetiredToOpacity" />
         <svc:ThrottleToArcGeometryConverter x:Key="ThrottleToArc" />
 
         <!-- Compact transport button used by the on-demand Replay panel. -->
@@ -716,6 +717,7 @@
                     <DataTemplate DataType="{x:Type models:DriverTimingRow}">
                         <Button Style="{StaticResource DriverButtonStyle}"
                                 Margin="0,0,0,3"
+                                Opacity="{Binding Retired, Converter={StaticResource RetiredToOpacity}}"
                                 Click="DriverButton_Click"
                                 Tag="{Binding RacingNumber}">
                             <Grid Height="56">

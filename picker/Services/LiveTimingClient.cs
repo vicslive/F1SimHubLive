@@ -360,6 +360,7 @@ public sealed class LiveTimingClient : IDisposable
             string tireColor = "#7F7F8A";
             int tireAge = 0;
             int pitCount = 0;
+            int gridPos = 0;
 
             if (appLines != null && appLines.TryGetPropertyValue(racingNumber, out var appNode) && appNode is JsonObject appObj)
             {
@@ -380,6 +381,15 @@ public sealed class LiveTimingClient : IDisposable
                     }
                     // PitStopCount = stint count - 1 (first stint isn't a pit).
                     pitCount = Math.Max(0, stints.Count - 1);
+                }
+
+                // GridPos is a string ("6") in TimingAppData. 0 / unparseable
+                // means no known grid (practice, qualifying, or pre-race) so
+                // the position-change arrow stays hidden.
+                var gridNode = appObj["GridPos"];
+                if (gridNode != null)
+                {
+                    int.TryParse(gridNode.GetValue<string>(), out gridPos);
                 }
             }
 
@@ -405,6 +415,7 @@ public sealed class LiveTimingClient : IDisposable
                 TireCompoundColor: tireColor,
                 TireAge: tireAge,
                 PitStopCount: pitCount,
+                GridPos: gridPos,
                 Sectors: sectorData,
                 BestSectorPos: statsBestSectorPos
             ));
@@ -607,6 +618,19 @@ public sealed class LiveTimingClient : IDisposable
             }
             row.InPit = s.InPit;
             row.Retired = s.Retired;
+            // Position change vs. the starting grid (GridPos - current pos).
+            // Positive = gained (green ▲), negative = lost (red ▼), 0 = "−0".
+            // Only shown when we have a real grid position and an on-track pos.
+            if (s.GridPos > 0 && s.Position > 0)
+            {
+                row.HasGridPos = true;
+                row.PositionChange = s.GridPos - s.Position;
+            }
+            else
+            {
+                row.HasGridPos = false;
+                row.PositionChange = 0;
+            }
             row.TireCompoundLetter = s.TireCompoundLetter;
             row.TireCompoundColor = s.TireCompoundColor;
             row.TireAge = s.TireAge;
@@ -795,6 +819,7 @@ public sealed class LiveTimingClient : IDisposable
         string TireCompoundColor,
         int TireAge,
         int PitStopCount,
+        int GridPos,
         SectorSnapshot[] Sectors,
         int[] BestSectorPos);
 }

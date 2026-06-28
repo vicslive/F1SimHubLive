@@ -115,6 +115,30 @@ public sealed class DriverTimingRow : INotifyPropertyChanged
         set => SetField(ref _retired, value);
     }
 
+    private int _positionChange;
+    /// <summary>
+    /// Net positions gained (+) or lost (-) versus the starting grid:
+    /// GridPos - current Position. 0 = no change ("−0"). Only meaningful
+    /// in a race; see <see cref="HasGridPos"/>.
+    /// </summary>
+    public int PositionChange
+    {
+        get => _positionChange;
+        set => SetField(ref _positionChange, value);
+    }
+
+    private bool _hasGridPos;
+    /// <summary>
+    /// True when MV's TimingAppData reported a valid GridPos for this driver
+    /// (i.e. a race with a known start). Drives the visibility of the
+    /// position-change arrow so practice/qualifying rows don't show "−0".
+    /// </summary>
+    public bool HasGridPos
+    {
+        get => _hasGridPos;
+        set => SetField(ref _hasGridPos, value);
+    }
+
     private string _tireCompoundLetter = "";
     /// <summary>"H" / "M" / "S" / "I" / "W" — single letter for the badge.</summary>
     public string TireCompoundLetter

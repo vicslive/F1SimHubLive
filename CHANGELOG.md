@@ -17,6 +17,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 ### Added
 - `scripts/Capture-ClockTimeline.ps1` — a standalone poller that samples MV's `ExtrapolatedClock` + freshest CarData playhead every few seconds and computes our countdown exactly as the plugin/picker do (primary anchor-extrapolation **and** the SessionEnd fallback), flagging `Extrapolating=false` segment gaps. Lets us validate the clock against MV Live Timing across session phases **without SimHub running**, and is the tool to re-run for the first live-qualifying verification.
 
+## [1.10.17] — 2026-06-28
+
+### Added
+- **Position-change indicator (▲ gained / ▼ lost vs. grid)** — each row now shows the net positions a driver has gained or lost versus their starting grid slot, next to the gear ring, mirroring F1 official Live Timing. Green ▲ for gains, red ▼ for losses, muted grey `−0` for no change; hidden outside races (practice/qualifying have no grid). The grid slot comes from MV's `TimingAppData.Lines[n].GridPos` (a string) and the change is `GridPos − current Position`. New `PositionChangeToTextConverter` + `PositionChangeToBrushConverter`, plumbed via `DriverTimingRow.PositionChange`/`HasGridPos`. Verified live: e.g. STR grid 22 → P19 renders ▲3. The gear-cluster column widened 50→78 to seat the arrow.
+
 ## [1.10.16] — 2026-06-28
 
 ### Added

@@ -299,7 +299,13 @@ public sealed class SessionInfoClient : IDisposable
     private void TickClock()
     {
         DateTime playhead = PlayheadProvider?.Invoke() ?? DateTime.MinValue;
-        DateTime pos = playhead - PlaybackLead;
+        bool hasPlayhead = playhead != DateTime.MinValue;
+        // Guard the subtraction: at startup (before the first CarData frame) the
+        // playhead is DateTime.MinValue, and MinValue - PlaybackLead underflows,
+        // throwing ArgumentOutOfRangeException that kills the picker on its first
+        // tick. pos is only consumed by the two branches below that already
+        // require a real playhead, so leave it at MinValue when none exists.
+        DateTime pos = hasPlayhead ? playhead - PlaybackLead : DateTime.MinValue;
 
         // Primary: official ExtrapolatedClock anchor extrapolated to the playback
         // position. While Extrapolating==false (e.g. formation lap) MV freezes

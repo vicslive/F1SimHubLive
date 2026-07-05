@@ -139,7 +139,7 @@ Font size matches the bottom strip's FS=22 per user preference.
 
 ## Sectors cluster (mid-left)
 
-Three rows, each with three sector slots: **own driver**, **car ahead (INT)**, **leader (LDR)**.
+Three rows, each with three sector slots: **own driver**, **car ahead (INT)**, **car behind (BHD)**.
 
 ### Own driver row
 | Widget | Bound to | Color logic |
@@ -162,17 +162,24 @@ var v = $prop('F1SimHubLivePlugin.AheadCarNumber');
 return (v && v != '') ? v : '';
 ```
 
-### LDR row (race leader)
+### BHD row (car directly behind)
+
+The bottom-left panel mirrors the INT panel, but for the car **immediately behind**
+you (`Position + 1`) rather than the leader. Its center shows that driver's last lap
+time, the badge to its right shows the gap back to them (`IntervalToBehind`), and the
+sector cells show their sectors. This deliberately does **not** duplicate the leader
+gap — that lives only in the bottom-right `LapsVal` (right corner of the wheel).
+
 | Widget | Bound to | Notes |
 |---|---|---|
-| `BehindNumber` | `LeaderCarNumber` (blank if `Position==1`) | Same dark pill as `AheadNumber` |
-| `LeaderSectorNTime` | `LeaderSectorNTime` + `LeaderSectorNIs*` flags | mirror of INT |
+| `BehindNumber` | `BehindCarNumber` (blank when you're last, i.e. no car behind) | Same dark pill as `AheadNumber` |
+| `BehindRank` | `BehindLastLapTime` (`IN PIT` if `BehindInPit`, `---` if none) | center lap time |
+| `Behind Gap` | `IntervalToBehind` | gap badge (positive: how far back the chaser is) |
+| `BehindSNTime` | `BehindSectorNTime` + `BehindSectorNIs*` flags | mirror of INT |
 
 `BehindNumber` Bindings.Text:
 ```js
-var pos = $prop('F1SimHubLivePlugin.Position');
-if (pos == 1 || pos == '1') return '';
-var v = $prop('F1SimHubLivePlugin.LeaderCarNumber');
+var v = $prop('F1SimHubLivePlugin.BehindCarNumber');
 return (v && v != '') ? v : '';
 ```
 

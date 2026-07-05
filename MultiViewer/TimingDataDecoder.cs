@@ -83,8 +83,8 @@ namespace F1SimHubLive.MultiViewer
             int ourPos = ParsePos(snap.Position);
             if (ourPos > 0)
             {
-                JObject? aheadDriver = null, leaderDriver = null;
-                string aheadNum = "", leaderNum = "";
+                JObject? aheadDriver = null, leaderDriver = null, behindDriver = null;
+                string aheadNum = "", leaderNum = "", behindNum = "";
                 foreach (var kv in lines)
                 {
                     if (kv.Key == driverNumber) continue;
@@ -92,12 +92,20 @@ namespace F1SimHubLive.MultiViewer
                     int p = ParsePos((string?)d["Position"] ?? "");
                     if (p <= 0) continue;
                     if (ourPos > 1 && p == ourPos - 1) { aheadDriver = d; aheadNum = kv.Key; }
+                    if (p == ourPos + 1) { behindDriver = d; behindNum = kv.Key; }
                     if (p == 1) { leaderDriver = d; leaderNum = kv.Key; }
                 }
                 snap.AheadCarNumber = aheadNum;
                 snap.LeaderCarNumber = leaderNum;
+                snap.BehindCarNumber = behindNum;
                 if (aheadDriver != null) FillAheadSectors(snap, aheadDriver);
                 if (leaderDriver != null) FillLeaderSectors(snap, leaderDriver);
+                if (behindDriver != null) FillBehindSectors(snap, behindDriver);
+
+                // The gap to the car behind is that car's own IntervalToPositionAhead —
+                // i.e. how far it trails the car directly ahead of it, which is us.
+                if (behindDriver?["IntervalToPositionAhead"] is JObject bv)
+                    snap.IntervalToBehind = (string?)bv["Value"] ?? "";
 
                 // Q-mode gap fix: if MV didn't give us live INT/LDR from the
                 // race-shape fields, derive them from PB differential — matches
@@ -113,6 +121,13 @@ namespace F1SimHubLive.MultiViewer
                     && !string.IsNullOrEmpty(snap.LeaderBestLapTime))
                 {
                     snap.GapToLeader = TryFormatGap(snap.BestLapTime, snap.LeaderBestLapTime);
+                }
+                // Behind gap is positive (chaser is slower): behindBest - myBest.
+                if (string.IsNullOrEmpty(snap.IntervalToBehind)
+                    && !string.IsNullOrEmpty(snap.BestLapTime)
+                    && !string.IsNullOrEmpty(snap.BehindBestLapTime))
+                {
+                    snap.IntervalToBehind = TryFormatGap(snap.BehindBestLapTime, snap.BestLapTime);
                 }
             }
 
@@ -207,6 +222,34 @@ namespace F1SimHubLive.MultiViewer
                 snap.LeaderSector3Time = (string?)s3["Value"] ?? "";
                 snap.LeaderSector3IsPersonalBest = (bool?)s3["PersonalFastest"] ?? false;
                 snap.LeaderSector3IsOverallBest = (bool?)s3["OverallFastest"] ?? false;
+            }
+        }
+
+        private static void FillBehindSectors(TimingSnapshot snap, JObject d)
+        {
+            if (d["LastLapTime"] is JObject behindLast)
+                snap.BehindLastLapTime = (string?)behindLast["Value"] ?? "";
+            if (d["BestLapTime"] is JObject behindBest)
+                snap.BehindBestLapTime = (string?)behindBest["Value"] ?? "";
+            snap.BehindInPit = (bool?)d["InPit"] ?? false;
+            if (d["Sectors"] is not JArray sectors) return;
+            if (sectors.Count > 0 && sectors[0] is JObject s1)
+            {
+                snap.BehindSector1Time = (string?)s1["Value"] ?? "";
+                snap.BehindSector1IsPersonalBest = (bool?)s1["PersonalFastest"] ?? false;
+                snap.BehindSector1IsOverallBest = (bool?)s1["OverallFastest"] ?? false;
+            }
+            if (sectors.Count > 1 && sectors[1] is JObject s2)
+            {
+                snap.BehindSector2Time = (string?)s2["Value"] ?? "";
+                snap.BehindSector2IsPersonalBest = (bool?)s2["PersonalFastest"] ?? false;
+                snap.BehindSector2IsOverallBest = (bool?)s2["OverallFastest"] ?? false;
+            }
+            if (sectors.Count > 2 && sectors[2] is JObject s3)
+            {
+                snap.BehindSector3Time = (string?)s3["Value"] ?? "";
+                snap.BehindSector3IsPersonalBest = (bool?)s3["PersonalFastest"] ?? false;
+                snap.BehindSector3IsOverallBest = (bool?)s3["OverallFastest"] ?? false;
             }
         }
     }

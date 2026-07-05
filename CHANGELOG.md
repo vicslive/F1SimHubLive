@@ -19,6 +19,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 ### Added
 - `scripts/Capture-ClockTimeline.ps1` — a standalone poller that samples MV's `ExtrapolatedClock` + freshest CarData playhead every few seconds and computes our countdown exactly as the plugin/picker do (primary anchor-extrapolation **and** the SessionEnd fallback), flagging `Extrapolating=false` segment gaps. Lets us validate the clock against MV Live Timing across session phases **without SimHub running**, and is the tool to re-run for the first live-qualifying verification.
 
+## [1.10.19] — 2026-07-05
+
+### Changed
+- **The wheel's bottom-left panel now shows the car directly *behind* you instead of the race leader.** The leader gap was being shown in two places — the bottom-left panel *and* the bottom-right `GAP` corner — which was redundant. Now the layout reads naturally around your own lap time in the middle: **car ahead (INT) top-left, car behind (BHD) bottom-left**, with the **leader gap kept only in the bottom-right corner** (`LapsVal` → `GapToLeader`, unchanged). The repurposed panel mirrors the INT panel exactly: center shows the behind car's last lap time (`BehindLastLapTime`, `IN PIT` when they're in the pits, `---` when you're last), the badge shows the gap back to them (`IntervalToBehind`), and the sector row shows their sectors with the same purple/green/grey colour logic. The panel's widgets were already named `Behind*` in the dashboard — they'd simply been wired to `Leader*` data; this change makes the name and the data agree.
+
+### Added
+- **Full `Behind*` telemetry mirror of the existing `Leader*`/`Ahead*` set**, exposed as SimHub properties: `BehindCarNumber`, `BehindLastLapTime`, `BehindBestLapTime`, `BehindInPit`, `BehindSector{1,2,3}Time` + `…IsPersonalBest`/`…IsOverallBest`, and `IntervalToBehind`. `TimingDataDecoder` now identifies the car at `Position + 1` and reads the gap back to it from *that car's* `IntervalToPositionAhead` (which, by definition, is the gap to the car ahead of it — you), with a qualifying-mode PB-differential fallback matching the existing INT/LDR behaviour. Purely additive: the live/recorded ahead/leader/gap logic is untouched, and the replay source (CarData + DriverList only) has no timing panels by design, so all three data modes (live, recorded, replay) behave exactly as before apart from the new behind panel.
+
 ## [1.10.18] — 2026-06-28
 
 ### Fixed

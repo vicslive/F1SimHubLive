@@ -18,6 +18,9 @@ namespace F1SimHubLive.Telemetry
         public string LastLapTime { get; set; } = "";
         public string GapToLeader { get; set; } = "";
         public string IntervalToAhead { get; set; } = "";
+        // Gap to the car immediately behind (Position = our Position + 1). Positive
+        // "+X.XXX" — how far back the chasing car is. Blank when we are last.
+        public string IntervalToBehind { get; set; } = "";
         public bool InPit { get; set; }
         public bool PitOut { get; set; }
 
@@ -46,6 +49,7 @@ namespace F1SimHubLive.Telemetry
 
         public string AheadCarNumber { get; set; } = "";
         public string LeaderCarNumber { get; set; } = "";
+        public string BehindCarNumber { get; set; } = "";
 
         // Lap times for the car immediately ahead (INT) and the leader (LDR). These are the
         // "actual lap time" of that other driver, not a gap. The wheel HUD displays them in
@@ -56,9 +60,12 @@ namespace F1SimHubLive.Telemetry
         public string AheadBestLapTime { get; set; } = "";
         public string LeaderLastLapTime { get; set; } = "";
         public string LeaderBestLapTime { get; set; } = "";
+        public string BehindLastLapTime { get; set; } = "";
+        public string BehindBestLapTime { get; set; } = "";
 
         public bool AheadInPit { get; set; }
         public bool LeaderInPit { get; set; }
+        public bool BehindInPit { get; set; }
 
         public string AheadSector1Time { get; set; } = "";
         public string AheadSector2Time { get; set; } = "";
@@ -79,5 +86,15 @@ namespace F1SimHubLive.Telemetry
         public bool LeaderSector1IsOverallBest { get; set; }
         public bool LeaderSector2IsOverallBest { get; set; }
         public bool LeaderSector3IsOverallBest { get; set; }
+
+        public string BehindSector1Time { get; set; } = "";
+        public string BehindSector2Time { get; set; } = "";
+        public string BehindSector3Time { get; set; } = "";
+        public bool BehindSector1IsPersonalBest { get; set; }
+        public bool BehindSector2IsPersonalBest { get; set; }
+        public bool BehindSector3IsPersonalBest { get; set; }
+        public bool BehindSector1IsOverallBest { get; set; }
+        public bool BehindSector2IsOverallBest { get; set; }
+        public bool BehindSector3IsOverallBest { get; set; }
     }
 }

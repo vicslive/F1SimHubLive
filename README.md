@@ -188,11 +188,12 @@ In **Device Manager**, the wheel should appear under *Human Interface Devices* w
 - Position (1st–20th)
 - Lap, CurrentLap / TotalLaps, `LapDisplay` (e.g. `47/53`)
 - BestLapTime, LastLapTime
-- GapToLeader, IntervalToAhead
+- GapToLeader, IntervalToAhead, IntervalToBehind
 - InPit, PitStopCount
 - TyreCompound + short letter (`S`/`M`/`H`/`I`/`W`), TyreAge
 - Sector 1/2/3 times + personal-best + overall-best flags
 - Ahead driver's sectors + **AheadCarNumber**
+- Behind driver's sectors + **BehindCarNumber** / **BehindTla**
 - Leader's sectors + **LeaderCarNumber**
 - TopSpeed in km/h + TopSpeedRank
 - OvertakeSystemEnabled / OvertakeAvailable
@@ -353,12 +354,15 @@ All properties are exposed under the **`F1SimHubLivePlugin`** namespace (class n
 | `SectorNIsPersonalBest` | bool (green) |
 | `SectorNIsOverallBest` | bool (purple) |
 
-### Sectors (driver ahead + race leader)
+### Sectors (driver ahead + car behind + race leader)
 | Property | Notes |
 |---|---|
 | `AheadCarNumber` | F1 racing number of car directly in front |
+| `BehindCarNumber` | F1 racing number of car directly behind (blank when you're last) |
+| `BehindTla` | 3-letter code of the car directly behind (blank in replay) |
 | `LeaderCarNumber` | F1 racing number of current leader |
 | `AheadSectorNTime` / `AheadSectorNIs(Personal/Overall)Best` | mirrors above |
+| `BehindSectorNTime` / `BehindSectorNIs(Personal/Overall)Best` | mirrors above |
 | `LeaderSectorNTime` / `LeaderSectorNIs(Personal/Overall)Best` | mirrors above |
 
 ### Session
@@ -414,6 +418,8 @@ Populated once per session as soon as the upstream `DriverList` is fetched. Empt
 
 ![F1RaceSim_GSIFPEV2 layout — full broadcast grid captured during the 2026 Monaco GP red-flag period: top-strip RED badge with red caution triangle, HAMILTON P2 on lap 68/78, gear 0 / 0 RPM (car stopped), INT and LDR pills both reading IN PIT with +1.409s gap, soft tyres on 11-lap stint, 4 pit stops, RED flag widget in the bottom-right](docs/screenshots/GSIFPEV2.png)
 
+> **Note (v1.10.20):** the bottom-left panel now shows the car **directly behind** you (`BHD`) instead of the race leader — the leader gap was redundant with the right pace column, so it now lives only there. The screenshot above predates the change and still shows the old `LDR` (leader) pill bottom-left.
+
 ### Layout
 
 The screen is laid out as a 3-column broadcast grid: **left = timing column**, **center = telemetry column**, **right = pace column**, plus a top status strip and a bottom data strip.
@@ -435,9 +441,9 @@ The screen is laid out as a 3-column broadcast grid: **left = timing column**, *
 │        yellow=other)                  │        │                    │
 │                                       │ 10580  │  @vicslive         │
 │ 34.720  42.014  18.054                │  RPM   │  github · instagram│
-│  ←  leader's reference sectors        └────────┘                    │
+│  ←  car-behind's reference sectors    └────────┘                    │
 │        +5.985                                                       │
-│ [63 LDR]                                       LAST 1:34.959        │
+│ [16 BHD]                                       LAST 1:34.959        │
 │                                                GAP  +5.985          │
 ├────────────────────────────────────────────────────────────────────┤
 │ TYRE M 17L   STOPS 0   TOP 324   OVT WAIT             CLEAR        │  BOTTOM STRIP
@@ -452,9 +458,9 @@ The screen is laid out as a 3-column broadcast grid: **left = timing column**, *
 **Left timing column** — sector splits laid out like the F1 international feed timing tower:
 - Top: `INT` pill (car directly ahead, with its car number) + **that car's last lap time** (e.g. `1:32.717`) + the gap to it as a colored badge (`+2.757`), then that car's last three sector times.
 - Middle: **your** driver's three sector times, coloured purple for overall-best, green for personal-best, yellow otherwise.
-- Bottom: leader's three sector times + the gap to leader as a colored badge (`+5.985`) + `LDR` pill with leader's car number and **the leader's last lap time** (e.g. `1:29.108`).
+- Bottom: the **car directly behind** you (`Position + 1`) — their three sector times + the gap back to them as a colored badge (`+5.985`) + a `BHD` pill showing that driver's TLA (e.g. `NOR`) and **their last lap time** (e.g. `1:35.402`). Falls back to `BHD` when you're last or there's no timing (replay).
 
-> ℹ️ The INT/LDR pill **center values** show the *other car's* most recent lap time (so you can compare pace at a glance — your last lap vs. the car ahead's vs. the leader's, all displayed simultaneously). The colored gap badges next to each pill show the relative time delta.
+> ℹ️ The INT/BHD pill **center values** show the *other car's* most recent lap time (so you can compare pace at a glance — the car ahead's last lap vs. yours vs. the car behind's, all displayed simultaneously). The colored gap badges next to each pill show the relative time delta. The layout reads naturally around your own time in the middle: **car ahead (INT) top-left, you in the middle, car behind (BHD) bottom-left**. The **gap to the race leader** lives only in the **right pace column** (`GapToLeader`), so it isn't shown twice.
 
 **Right pace column** — LAP `M/N` and POSITION `X/N` pills, the **INPUTS** panel (`BRAKE PRESSURE` yellow bar above, `THROTTLE POSITION` white bar below — same convention as the F1 international feed input overlay), the `@vicslive` signature widget, and a LAST/GAP readout for the selected driver's most recent lap time and current race gap to leader.
 
@@ -475,13 +481,14 @@ The screen is laid out as a 3-column broadcast grid: **left = timing column**, *
 | `POS` pill | `Position` + `TotalDrivers` | format `X/N` |
 | Driver name title | `DriverLastName` upper-case → `F1 LIVE` fallback. TextColor uses `TeamColour` when `Status='Connected'`. | Live broadcast colour (Ferrari `#E80020`, Mercedes `#27F4D2`, etc.) |
 | `AheadNumber` pill | `AheadCarNumber` | "INT" pill to the LEFT of the ahead sectors row |
-| `BehindNumber` pill | `LeaderCarNumber` (blank if `Position==1`) | "LDR" pill to the LEFT of the leader sectors row |
+| `BehindNumber` pill | `BehindCarNumber` (blank when you're last) | "BHD" pill to the LEFT of the car-behind sectors row |
+| `BehindName` label | `BehindTla` (falls back to `BHD`) | the behind driver's 3-letter code |
 | Own sector 1/2/3 | `SectorNTime` + `SectorNIs(Personal/Overall)Best` | purple = overall-best, green = personal-best, yellow = other |
 | INT sectors row | `AheadSectorNTime` + ahead best flags | car directly in front |
-| LDR sectors row | `LeaderSectorNTime` + leader best flags | race leader |
+| BHD sectors row | `BehindSectorNTime` + behind best flags | car directly behind |
 | Gap to ahead (`+2.757`) | `IntervalToAhead` | shown between INT pill and your driver's sectors |
-| Gap to leader (`+5.985`) | `GapToLeader` | shown above the LDR pill |
-| LAST / GAP cluster | `LastLapTime` / `GapToLeader` | inside the right pace column |
+| Gap to behind (`+5.985`) | `IntervalToBehind` | shown above the BHD pill |
+| LAST / GAP cluster | `LastLapTime` / `GapToLeader` | inside the right pace column (this is where the **leader** gap lives now) |
 | Weather (top-left) | `AirTemp` / `TrackTemp` / `Rainfall` | sun / rain icon driven by `Rainfall` boolean |
 | Session clock (top-right) | `SessionClock` | wall-clock time string |
 | Session time remaining (top-right) | `SessionTimeRemaining` | hourglass icon |
@@ -550,7 +557,9 @@ every interaction, plus screenshots and troubleshooting.
   mirrors the wheel, and a focused-driver input cluster (vertical throttle
   bar + big gear letter + RPM digit).
 - Driver list is sorted by current race position (from MultiViewer's
-  `TimingData`), with team-coloured TLA tiles, live speed in km/h, last and
+  `TimingData`), with MV-style team-colour driver blocks (position number on
+  the team colour, TLA on a black/white inset — restyled v1.10.20), live
+  speed in km/h, last and
   best lap times, interval to car ahead and gap to leader, current tyre
   compound and stint age, pit count, and a three-row sector strip
   (segments / current sector time / personal-best sector time) with
@@ -820,7 +829,7 @@ foreach ($p in 'Status','Rpm','Gear','Speed','Position','LapDisplay','TrackStatu
 │   └── TopicNames.cs
 ├── MultiViewer/
 │   ├── MultiViewerHttpClient.cs    # Local MultiViewer HTTP polling
-│   ├── TimingDataDecoder.cs        # Position/Gap/Sectors + Ahead/Leader car numbers
+│   ├── TimingDataDecoder.cs        # Position/Gap/Sectors + Ahead/Behind/Leader car numbers
 │   ├── TimingStatsDecoder.cs       # TopSpeed + rank
 │   ├── TimingAppDataDecoder.cs     # Tyre + stops
 │   ├── SessionDataDecoder.cs       # Session clock

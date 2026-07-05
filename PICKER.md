@@ -125,6 +125,8 @@ The scrollbar is dark-themed to match.
 
 ![Single driver row anatomy — Leclerc P2 in Ferrari red: position number, team-coloured TLA tile, name and team, current speed (62 km/h), LAST and BEST lap times (BEST in purple = session best), INT (gap to car ahead) and LDR (gap to leader), Medium tyre badge with L16 stint age, pit count (2), and the three-sector strip showing mini-bar segments, current sector times, and personal-best sector times (S2 best in purple = session-best sector)](docs/screenshots/picker-row-anatomy.png)
 
+> **Note (v1.10.20):** the driver block was restyled to match MV Live Timing — the position number now sits on the **team colour** and the TLA on a **black/white inset** painted in the team colour (one connected, thinner, rectangular unit). The screenshot above predates the restyle and still shows the older dark-grey-position / solid-team-colour-TLA tiles.
+
 ```
 ┌──┬────┬───────────────────┬──────┬───────────────┬───────────────┬──────┬───┬──────────────────┐
 │ 1│LEC │ Leclerc           │ 322  │ LAST 1:15.121 │ INT     —     │ ⓗ   │ 2 │ ▮▮▮▮▮▮▮▮  ▮▮▮  │
@@ -143,8 +145,8 @@ The scrollbar is dark-themed to match.
 
 | # | Column | Width | What it shows | Source |
 |---|---|---|---|---|
-| 0 | **Position** | 26 px | Driver's current race / qualifying position. Black-bold white on a dark grey rounded tile. `—` when zero. | `TimingData.Lines[*].Position` |
-| 1 | **TLA tile** | 52 px | Three-letter abbreviation on a tile coloured with the constructor's official team colour (Ferrari red, Mercedes silver, etc.). | `DriverList.Tla` + `TeamColour` |
+| 0 | **Position** | 26 px | Driver's current race / qualifying position, shown on the **team-colour base** of the driver block with the number in auto black-or-white for contrast (restyled v1.10.20 — was a dark-grey tile). `—` when zero. | `TimingData.Lines[*].Position` |
+| 1 | **TLA inset** | 52 px | Three-letter abbreviation on a **black/white contrast inset** — black for light teams (Mercedes), white for dark teams (Ferrari) — with the **TLA painted in the team colour**, matching MV Live Timing (restyled v1.10.20 — was a solid team-colour tile; both halves now read as one connected, thinner block). | `DriverList.Tla` + `TeamColour` |
 | 2 | **Input cluster** | 78 px | Dark circular ring with the **current gear letter** centered (`N` / `R` / `1`–`8`), a **blue throttle arc** sweeping clockwise around the ring 0–100 %, and the **integer RPM** in white beneath. In races, a **position-change arrow** (green ▲ gained / red ▼ lost vs. grid, muted `−0` for no change) sits alongside the ring. Broadcast-style — see [Per-driver input cluster](#per-driver-input-cluster) and [Positions gained / lost vs. grid](#positions-gained--lost-vs-grid) below. Added v1.7.4–v1.7.6; arrow added v1.10.17 (column widened 50→78 to seat it). | MV `CarData` channels `0` (RPM), `3` (gear), `4` (throttle) for that car's racing number; arrow from `TimingAppData.GridPos` − `Position` |
 | 3 | **Speed** | 72 px | Current car speed in km/h, big bold Consolas number with a tiny `km/h` under it. Updates ~5×/sec for **every car** (not just the selected one). `0` when telemetry is paused / driver in pit. | MV `CarData` channel `2` for that car's racing number |
 | 4 | **LAST + BEST lap** | 120 px | Two-row stack. `LAST` row shows the most recent completed lap (or `IN PIT` when the driver is in the pit lane). `BEST` row shows the personal best lap of the session. Colour-coded — see [Time colour scheme](#time-colour-scheme) below. | `TimingData.Lines[*].LastLapTime` + `TimingStats.Lines[*].PersonalBestLapTime` |

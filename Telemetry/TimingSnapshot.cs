@@ -50,6 +50,9 @@ namespace F1SimHubLive.Telemetry
         public string AheadCarNumber { get; set; } = "";
         public string LeaderCarNumber { get; set; } = "";
         public string BehindCarNumber { get; set; } = "";
+        // 3-letter code of the car directly behind (resolved from DriverList by the
+        // MV client, since TimingData only carries racing numbers). Empty in replay.
+        public string BehindTla { get; set; } = "";
 
         // Lap times for the car immediately ahead (INT) and the leader (LDR). These are the
         // "actual lap time" of that other driver, not a gap. The wheel HUD displays them in

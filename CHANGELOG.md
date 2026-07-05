@@ -19,6 +19,17 @@ Format follows [Keep a Changelog](https://keepachangelog.com/). Dates in `YYYY-M
 ### Added
 - `scripts/Capture-ClockTimeline.ps1` — a standalone poller that samples MV's `ExtrapolatedClock` + freshest CarData playhead every few seconds and computes our countdown exactly as the plugin/picker do (primary anchor-extrapolation **and** the SessionEnd fallback), flagging `Extrapolating=false` segment gaps. Lets us validate the clock against MV Live Timing across session phases **without SimHub running**, and is the tool to re-run for the first live-qualifying verification.
 
+## [1.10.20] — 2026-07-05
+
+### Fixed
+- **The wheel's bottom-left (behind) panel now shows the behind driver's 3-letter code instead of a hardcoded `LDR` label.** When the panel was repurposed from leader→behind in 1.10.19, its `BehindName` widget was left reading `return 'LDR';`, so it kept saying `LDR` even though the *number* underneath correctly resolved to the car behind. It now shows the real TLA (e.g. `NOR` for the car behind Hamilton), falling back to `BHD` when there's no car behind or timing isn't available (e.g. replay).
+
+### Added
+- **`BehindTla` SimHub property** — the 3-letter code of the car directly behind. `TimingData` carries racing numbers only, so the MV client now builds a number→TLA map once from the `DriverList` poll (via `DriverListDecoder.ParseAllDrivers`) and stamps `BehindTla` onto each timing snapshot. Additive and mode-safe: the map is reference-swapped atomically, read from the timing loop, and empty in replay (panel falls back to `BHD`).
+
+### Changed
+- **Picker driver chip restyled to match MultiViewer Live Timing.** The old thick, squared two-tone block (dark-grey position tile + separate team-colour TLA tile with a seam gap) is replaced by a single, thinner, more rectangular unit: the **team colour is the base and carries the position number** (text auto black/white for contrast), and the **TLA sits on a black/white inset** (black for light teams like Mercedes, white for dark teams like Ferrari) with the **TLA painted in the team colour**. New `TeamColourToContrastConverter` picks black vs white by Rec. 601 luma (threshold 140).
+
 ## [1.10.19] — 2026-07-05
 
 ### Changed

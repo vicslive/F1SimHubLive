@@ -46,6 +46,11 @@ namespace F1SimHubLive.MultiViewer
         private ExtrapolatedClockDecoder.Clock _lastClock;
         private int _totalDrivers;
         private bool _driverInfoEmitted;
+        // Racing-number -> TLA map built once from the DriverList poll. TimingData
+        // only carries numbers, so this lets us label the car behind (INT/BHD panel)
+        // with a real 3-letter code. Reference-swapped atomically; read from the
+        // separate TimingData loop, so never mutated in place.
+        private System.Collections.Generic.Dictionary<string, string> _tlaByNumber = new();
         private bool _everConnected;
         private int _consecutiveFailures;
 
@@ -143,6 +148,12 @@ namespace F1SimHubLive.MultiViewer
                         // Hamilton can use OVT only if system enabled AND he is within 1.0s of car ahead.
                         snap.OvertakeAvailable = ovtEnabled && IsWithinOneSecond(snap.IntervalToAhead);
 
+                        // Label the car behind with its TLA (TimingData is numbers-only).
+                        var tlaMap = _tlaByNumber;
+                        if (snap.BehindCarNumber.Length > 0
+                            && tlaMap.TryGetValue(snap.BehindCarNumber, out var behindTla))
+                            snap.BehindTla = behindTla;
+
                         OnTimingSnapshot?.Invoke(snap);
                     }
                 }
@@ -215,7 +226,7 @@ namespace F1SimHubLive.MultiViewer
                     // DriverList: fetched once (field size doesn't change mid-race). Retry each
                     // iteration until we get a non-zero count, and until we resolve identity
                     // fields (TLA / last name / team) for the configured driver number.
-                    if (_totalDrivers == 0 || !_driverInfoEmitted)
+                    if (_totalDrivers == 0 || !_driverInfoEmitted || _tlaByNumber.Count == 0)
                     {
                         try
                         {
@@ -224,6 +235,17 @@ namespace F1SimHubLive.MultiViewer
                             {
                                 int n = DriverListDecoder.CountDrivers(dlJson);
                                 if (n > 0) _totalDrivers = n;
+                            }
+                            if (_tlaByNumber.Count == 0)
+                            {
+                                var all = DriverListDecoder.ParseAllDrivers(dlJson);
+                                if (all.Count > 0)
+                                {
+                                    var map = new System.Collections.Generic.Dictionary<string, string>(all.Count);
+                                    foreach (var kv in all)
+                                        if (kv.Value.Tla.Length > 0) map[kv.Key] = kv.Value.Tla;
+                                    if (map.Count > 0) _tlaByNumber = map;
+                                }
                             }
                             if (!_driverInfoEmitted)
                             {

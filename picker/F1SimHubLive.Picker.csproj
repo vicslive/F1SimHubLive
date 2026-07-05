@@ -10,10 +10,10 @@
     <ApplicationIcon>Assets\picker.ico</ApplicationIcon>
     <AssemblyName>F1SimHubLive-Picker</AssemblyName>
     <RootNamespace>F1SimHubLive.Picker</RootNamespace>
-    <Version>1.10.19</Version>
-    <AssemblyVersion>1.10.19.0</AssemblyVersion>
-    <FileVersion>1.10.19.0</FileVersion>
-    <InformationalVersion>1.10.19</InformationalVersion>
+    <Version>1.10.20</Version>
+    <AssemblyVersion>1.10.20.0</AssemblyVersion>
+    <FileVersion>1.10.20.0</FileVersion>
+    <InformationalVersion>1.10.20</InformationalVersion>
     <AssemblyTitle>F1SimHubLive Driver Picker</AssemblyTitle>
     <Product>F1SimHubLive</Product>
     <Company>vicslive</Company>

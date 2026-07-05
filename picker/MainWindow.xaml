@@ -15,6 +15,7 @@
 
     <Window.Resources>
         <svc:HexToBrushConverter x:Key="HexToBrush" />
+        <svc:TeamColourToContrastConverter x:Key="TeamContrast" />
         <svc:LapStatusToBrushConverter x:Key="LapStatusToBrush" />
         <svc:LapStatusToBoxBackgroundConverter x:Key="LapStatusToBoxBg" />
         <svc:LapStatusToBoxForegroundConverter x:Key="LapStatusToBoxFg" />
@@ -753,32 +754,46 @@
                                     <ColumnDefinition Width="*" MinWidth="260" />
                                 </Grid.ColumnDefinitions>
 
-                                <!-- Position tile — dark grey rounded block, matches
-                                     MV Live Timing's two-tone driver block. Paired with
-                                     the team-coloured TLA tile to the right with a small
-                                     seam gap so both halves read as a single unit. -->
-                                <Border Grid.Column="0"
-                                        Background="#26262E"
-                                        CornerRadius="3"
-                                        Margin="2,3,1,3">
-                                    <TextBlock Text="{Binding Position, Converter={StaticResource PositionToText}}"
-                                               FontSize="16" FontWeight="Black"
-                                               Foreground="#E8E8EE"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center" />
-                                </Border>
-
-                                <!-- TLA tile — team colour, rounded, with a 1px seam gap
-                                     to the position tile to match MV's two-tone block. -->
-                                <Border Grid.Column="1"
+                                <!-- MV Live Timing driver block (restyled 1.10.20):
+                                     one connected, thinner, rectangular unit. The
+                                     team colour is the base and carries the position
+                                     number (text auto black/white for contrast). The
+                                     TLA sits on a black/white inset (black for light
+                                     teams like Mercedes, white for dark teams like
+                                     Ferrari) with the TLA painted in the team colour —
+                                     exactly how MV's Live Timing renders it. -->
+                                <Border Grid.Column="0" Grid.ColumnSpan="2"
                                         Background="{Binding TeamColour, Converter={StaticResource HexToBrush}}"
-                                        CornerRadius="3"
-                                        Margin="1,3,0,3">
-                                    <TextBlock Text="{Binding Tla}"
-                                               Foreground="White"
-                                               FontSize="16" FontWeight="Black"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center" />
+                                        CornerRadius="4"
+                                        Margin="2,9,2,9"
+                                        SnapsToDevicePixels="True">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="26" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Position number on the team colour -->
+                                        <TextBlock Grid.Column="0"
+                                                   Text="{Binding Position, Converter={StaticResource PositionToText}}"
+                                                   FontSize="15" FontWeight="Black"
+                                                   Foreground="{Binding TeamColour, Converter={StaticResource TeamContrast}}"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+
+                                        <!-- TLA inset — black/white contrast box, TLA
+                                             text in the team colour. -->
+                                        <Border Grid.Column="1"
+                                                Background="{Binding TeamColour, Converter={StaticResource TeamContrast}}"
+                                                CornerRadius="3"
+                                                Margin="0,2,2,2">
+                                            <TextBlock Text="{Binding Tla}"
+                                                       Foreground="{Binding TeamColour, Converter={StaticResource HexToBrush}}"
+                                                       FontSize="15" FontWeight="Black"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center" />
+                                        </Border>
+                                    </Grid>
                                 </Border>
 
                                 <!-- v1.7.4: per-driver input cluster. Circular ring with

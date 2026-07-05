@@ -150,6 +150,7 @@ namespace F1SimHubLive
             Register("LeaderSector2IsOverallBest", false);
             Register("LeaderSector3IsOverallBest", false);
             Register("BehindCarNumber", "");
+            Register("BehindTla", "");
             Register("BehindLastLapTime", "");
             Register("BehindBestLapTime", "");
             Register("BehindInPit", false);
@@ -447,6 +448,7 @@ namespace F1SimHubLive
                 SetProp("LeaderSector2IsOverallBest", t.LeaderSector2IsOverallBest);
                 SetProp("LeaderSector3IsOverallBest", t.LeaderSector3IsOverallBest);
                 SetProp("BehindCarNumber", t.BehindCarNumber);
+                SetProp("BehindTla", t.BehindTla);
                 SetProp("BehindLastLapTime", t.BehindLastLapTime);
                 SetProp("BehindBestLapTime", t.BehindBestLapTime);
                 SetProp("BehindInPit", t.BehindInPit);
